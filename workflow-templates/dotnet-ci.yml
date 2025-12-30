@@ -1,0 +1,27 @@
+name: .NET CI
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  ci:
+    uses: EagleViewEnt/.github/.github/workflows/reusable-dotnet-ci.yml@main
+    with:
+      dotnet-version: '10.0.x'
+      build-configuration: 'Release'
+      run-tests: true
+      enable-code-coverage: true
+      publish-packages: true
+      # Update this with your projects:
+      package-projects: '["src/YourProject/YourProject.csproj"]'
+      org-name: 'EagleViewEnt'
+      package-access-config: '.github/package-access.json'
+    secrets:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

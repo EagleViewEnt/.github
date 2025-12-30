@@ -1,0 +1,124 @@
+name: 'Setup GitHub Packages Authentication'
+description: 'Configure NuGet authentication for GitHub Packages with retry logic'
+author: 'EagleViewEnt'
+
+inputs:
+  github-token:
+    description: 'GitHub token for authentication'
+    required: true
+  org-name:
+    description: 'GitHub organization name'
+    required: false
+    default: 'EagleViewEnt'
+  additional-sources:
+    description: 'Additional NuGet sources (JSON array)'
+    required: false
+    default: '[]'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Configure NuGet Authentication
+      shell: pwsh
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_ACTOR: ${{ github.actor }}
+        ORG_NAME: ${{ inputs.org-name }}
+      run: |
+        Write-Host "=== Configuring NuGet Authentication ===" -ForegroundColor Cyan
+        
+        # Function to safely remove source
+        function Remove-NuGetSourceSafe {
+          param([string]$SourceName)
+          try {
+            $existing = dotnet nuget list source 2>&1 | Select-String -Pattern $SourceName
+            if ($existing) {
+              Write-Host "Removing existing source: $SourceName" -ForegroundColor Yellow
+              dotnet nuget remove source $SourceName 2>&1 | Out-Null
+            }
+          } catch {
+            Write-Host "Note: Could not remove source $SourceName (may not exist)" -ForegroundColor Gray
+          }
+        }
+        
+        # Remove potentially conflicting sources
+        Remove-NuGetSourceSafe "github"
+        Remove-NuGetSourceSafe "nuget.org"
+        
+        # Add nuget.org (official packages)
+        Write-Host "Adding nuget.org source..." -ForegroundColor Green
+        dotnet nuget add source "https://api.nuget.org/v3/index.json" `
+          --name "nuget.org" `
+          2>&1 | Out-Null
+        
+        # Add GitHub Packages with authentication
+        $githubSource = "https://nuget.pkg.github.com/$env:ORG_NAME/index.json"
+        Write-Host "Adding GitHub Packages source: $githubSource" -ForegroundColor Green
+        
+        dotnet nuget add source $githubSource `
+          --name "github" `
+          --username $env:GITHUB_ACTOR `
+          --password $env:GITHUB_TOKEN `
+          --store-password-in-clear-text `
+          2>&1 | Out-Null
+        
+        # Add any additional sources
+        $additionalSources = '${{ inputs.additional-sources }}' | ConvertFrom-Json
+        if ($additionalSources -and $additionalSources.Count -gt 0) {
+          foreach ($source in $additionalSources) {
+            $sourceName = $source -replace '[^a-zA-Z0-9]', '_'
+            Write-Host "Adding additional source: $sourceName" -ForegroundColor Green
+            Remove-NuGetSourceSafe $sourceName
+            dotnet nuget add source $source --name $sourceName 2>&1 | Out-Null
+          }
+        }
+        
+        # Verify sources
+        Write-Host "`n=== Configured NuGet Sources ===" -ForegroundColor Cyan
+        dotnet nuget list source
+        
+        Write-Host "`n? NuGet authentication configured successfully" -ForegroundColor Green
+
+    - name: Create NuGet.Config
+      shell: pwsh
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_ACTOR: ${{ github.actor }}
+        ORG_NAME: ${{ inputs.org-name }}
+      run: |
+        Write-Host "=== Creating NuGet.Config ===" -ForegroundColor Cyan
+        
+        # Backup existing config if present
+        if (Test-Path "nuget.config") {
+          Write-Host "Backing up existing nuget.config..." -ForegroundColor Yellow
+          Copy-Item "nuget.config" "nuget.config.backup" -Force
+        }
+        
+        # Create comprehensive nuget.config
+        $nugetConfig = @"
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <clear />
+    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />
+    <add key="github" value="https://nuget.pkg.github.com/$env:ORG_NAME/index.json" />
+  </packageSources>
+  <packageSourceCredentials>
+    <github>
+      <add key="Username" value="$env:GITHUB_ACTOR" />
+      <add key="ClearTextPassword" value="$env:GITHUB_TOKEN" />
+    </github>
+  </packageSourceCredentials>
+  <disabledPackageSources />
+  <config>
+    <add key="defaultPushSource" value="https://nuget.pkg.github.com/$env:ORG_NAME/index.json" />
+  </config>
+</configuration>
+"@
+        
+        Set-Content -Path "nuget.config" -Value $nugetConfig -Force
+        Write-Host "? NuGet.Config created/updated" -ForegroundColor Green
+
+branding:
+  icon: 'lock'
+  color: 'blue'

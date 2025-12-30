@@ -1,0 +1,14 @@
+{
+  "name": ".NET CI Workflow",
+  "description": "Standard CI workflow for .NET projects with build, test, and package publishing",
+  "iconName": "dotnet",
+  "categories": [
+    "dotnet",
+    "continuous-integration",
+    "nuget"
+  ],
+  "filePatterns": [
+    "^.*\\.csproj$",
+    "^.*\\.sln$"
+  ]
+}
