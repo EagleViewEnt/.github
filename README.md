@@ -1,15 +1,15 @@
-# EagleViewEnt Organization Workflows
+# :rocket: EagleViewEnt Organization Workflows
 
 This repository contains shared workflows, actions, and templates used across all EagleViewEnt repositories.
 
-## ?? Purpose
+## :dart: Purpose
 
 - **Centralize CI/CD workflows** - Update once, apply everywhere
 - **Standardize processes** - Consistent behavior across all repos
 - **Simplify maintenance** - Single source of truth
 - **Enable workflow templates** - Starter workflows in Actions tab
 
-## ?? Repository Structure
+## :file_folder: Repository Structure
 
 ```
 .github/
@@ -32,7 +32,7 @@ scripts/
 ??? Configure-PackageAccess.ps1      # Manual package access config
 ```
 
-## ?? Quick Start
+## :rocket: Quick Start
 
 ### For .NET Libraries (with NuGet Packages)
 
@@ -85,19 +85,19 @@ jobs:
       org-name: 'EagleViewEnt'
 ```
 
-## ?? Available Workflows
+## :gear: Available Workflows
 
 ### reusable-dotnet-ci.yml
 
 Complete CI/CD pipeline for .NET projects:
 
 **Features:**
-- ? Build and test
-- ? Code coverage collection
-- ? NuGet package creation
-- ? GitHub Packages publishing
-- ? Automatic authentication
-- ? Conditional packaging
+- :white_check_mark: Build and test
+- :white_check_mark: Code coverage collection
+- :white_check_mark: NuGet package creation
+- :white_check_mark: GitHub Packages publishing
+- :white_check_mark: Automatic authentication
+- :white_check_mark: Conditional packaging
 
 **Inputs:**
 
@@ -111,17 +111,17 @@ Complete CI/CD pipeline for .NET projects:
 | `package-projects` | string | `[]` | Projects to pack (JSON array) |
 | `org-name` | string | `EagleViewEnt` | GitHub organization |
 
-## ?? Authentication
+## :lock: Authentication
 
 The reusable workflows automatically handle GitHub Packages authentication. No additional setup required!
 
 The workflow:
-1. ? Removes conflicting NuGet sources
-2. ? Adds nuget.org
-3. ? Adds GitHub Packages with authentication
-4. ? Uses `GITHUB_TOKEN` (automatically available)
+1. :white_check_mark: Removes conflicting NuGet sources
+2. :white_check_mark: Adds nuget.org
+3. :white_check_mark: Adds GitHub Packages with authentication
+4. :white_check_mark: Uses `GITHUB_TOKEN` (automatically available)
 
-## ?? Package Publishing
+## :package: Package Publishing
 
 ### Internal Visibility (Recommended)
 
@@ -130,13 +130,13 @@ Packages are automatically set to **internal visibility**, making them available
 ### Conditional Publishing
 
 The workflow only publishes packages when:
-- ? `publish-packages: true` is set
-- ? Push is to `main` branch
-- ? Not a pull request
+- :white_check_mark: `publish-packages: true` is set
+- :white_check_mark: Push is to `main` branch
+- :white_check_mark: Not a pull request
 
 This means the same workflow works for both libraries and applications!
 
-## ?? Documentation
+## :book: Documentation
 
 Comprehensive guides are available:
 
@@ -146,16 +146,16 @@ Comprehensive guides are available:
 - **[Package Access](docs/PACKAGE_ACCESS.md)** - Managing package visibility
 - **[Migration Guide](docs/MIGRATION_GUIDE.md)** - Migrating existing repos
 
-## ?? Workflow Templates
+## :art: Workflow Templates
 
 Starter workflows appear automatically in the Actions tab when creating new workflows:
 
-1. Go to repository ? Actions ? New workflow
+1. Go to repository :arrow_right: Actions :arrow_right: New workflow
 2. See "EagleViewEnt workflows" section
 3. Choose ".NET CI Workflow"
 4. Customize for your project
 
-## ?? Updating Workflows
+## :arrows_counterclockwise: Updating Workflows
 
 ### Using Latest Version (Recommended)
 
@@ -181,24 +181,24 @@ uses: EagleViewEnt/.github/.github/workflows/reusable-dotnet-ci.yml@abc123
 
 For testing or troubleshooting specific versions.
 
-## ?? What Gets Built
+## :bar_chart: What Gets Built
 
 When a workflow runs:
 
 1. **On Pull Requests:**
-   - ? Build
-   - ? Test
-   - ? Code coverage
-   - ?? Skip packaging/publishing
+   - :white_check_mark: Build
+   - :white_check_mark: Test
+   - :white_check_mark: Code coverage
+   - :no_entry_sign: Skip packaging/publishing
 
 2. **On Main Branch Push:**
-   - ? Build
-   - ? Test
-   - ? Code coverage
-   - ? Pack (if `publish-packages: true`)
-   - ? Publish (if `publish-packages: true`)
+   - :white_check_mark: Build
+   - :white_check_mark: Test
+   - :white_check_mark: Code coverage
+   - :white_check_mark: Pack (if `publish-packages: true`)
+   - :white_check_mark: Publish (if `publish-packages: true`)
 
-## ??? Examples
+## :hammer_and_wrench: Examples
 
 ### Single Library Project
 
@@ -242,7 +242,7 @@ jobs:
       publish-packages: false
 ```
 
-## ?? Contributing
+## :handshake: Contributing
 
 To improve the shared workflows:
 
@@ -253,7 +253,7 @@ To improve the shared workflows:
 5. Document breaking changes
 6. Tag releases with semantic versioning
 
-## ?? Support
+## :telephone_receiver: Support
 
 For workflow issues:
 1. Check the [documentation](docs/)
@@ -261,18 +261,18 @@ For workflow issues:
 3. Check workflow run logs
 4. Contact DevOps team
 
-## ?? Benefits
+## :tada: Benefits
 
 Using these shared workflows provides:
 
-- ? **90% less code** per repository
-- ? **Consistent behavior** across all projects
-- ? **Automatic updates** when workflows improve
-- ? **Built-in authentication** for GitHub Packages
-- ? **Conditional packaging** - one workflow for all repo types
-- ? **Battle-tested** - proven in production
+- :white_check_mark: **90% less code** per repository
+- :white_check_mark: **Consistent behavior** across all projects
+- :white_check_mark: **Automatic updates** when workflows improve
+- :white_check_mark: **Built-in authentication** for GitHub Packages
+- :white_check_mark: **Conditional packaging** - one workflow for all repo types
+- :white_check_mark: **Battle-tested** - proven in production
 
-## ?? License
+## :memo: License
 
 Copyright (c) 2025 Eagle View Enterprises LLC. All rights reserved.
 
