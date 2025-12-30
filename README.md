@@ -13,23 +13,23 @@ This repository contains shared workflows, actions, and templates used across al
 
 ```
 .github/
-??? workflows/
-?   ??? reusable-dotnet-ci.yml      # Main reusable .NET CI/CD workflow
-??? actions/
-    ??? setup-github-packages-auth/ # GitHub Packages authentication
-        ??? action.yml
-        ??? README.md
+├── workflows/
+│   └── reusable-dotnet-ci.yml      # Main reusable .NET CI/CD workflow
+└── actions/
+    └── setup-github-packages-auth/ # GitHub Packages authentication
+        ├── action.yml
+        └── README.md
 workflow-templates/
-??? dotnet-ci.yml                    # .NET CI starter template
-??? dotnet-ci.properties.json        # Template metadata
+├── dotnet-ci.yml                    # .NET CI starter template
+└── dotnet-ci.properties.json        # Template metadata
 docs/
-??? SHARED_WORKFLOWS.md              # Complete usage guide
-??? CENTRALIZED_CICD.md              # Overview and benefits
-??? WORKFLOW_CONFIG.md               # Configuration reference
-??? PACKAGE_ACCESS.md                # Package visibility management
-??? MIGRATION_GUIDE.md               # Migration instructions
+├── SHARED_WORKFLOWS.md              # Complete usage guide
+├── CENTRALIZED_CICD.md              # Overview and benefits
+├── WORKFLOW_CONFIG.md               # Configuration reference
+├── PACKAGE_ACCESS.md                # Package visibility management
+└── MIGRATION_GUIDE.md               # Migration instructions
 scripts/
-??? Configure-PackageAccess.ps1      # Manual package access config
+└── Configure-PackageAccess.ps1      # Manual package access config
 ```
 
 ## :rocket: Quick Start
