@@ -16,9 +16,9 @@ This repository contains shared workflows, actions, and templates used across al
 ??? workflows/
 ?   ??? reusable-dotnet-ci.yml      # Main reusable .NET CI/CD workflow
 ??? actions/
-?   ??? setup-github-packages-auth/ # GitHub Packages authentication
-?       ??? action.yml
-?       ??? README.md
+    ??? setup-github-packages-auth/ # GitHub Packages authentication
+        ??? action.yml
+        ??? README.md
 workflow-templates/
 ??? dotnet-ci.yml                    # .NET CI starter template
 ??? dotnet-ci.properties.json        # Template metadata
