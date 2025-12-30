@@ -6,11 +6,11 @@ A composite action that configures NuGet authentication for GitHub Packages with
 
 GitHub Packages authentication can be tricky. This action solves common issues:
 
-- ? 401 Unauthorized errors
-- ? Cached authentication failures  
-- ? Conflicting source configurations
-- ? Token not properly passed to dotnet restore
-- ? Missing nuget.config
+- ✗ 401 Unauthorized errors
+- ✗ Cached authentication failures  
+- ✗ Conflicting source configurations
+- ✗ Token not properly passed to dotnet restore
+- ✗ Missing nuget.config
 
 ## Usage
 
@@ -94,9 +94,9 @@ Both methods ensure authentication works even if one method fails.
 ## Backup and Restore
 
 The action automatically:
-- ? Backs up existing `nuget.config` to `nuget.config.backup`
-- ? Creates a new `nuget.config` with authentication
-- ? Preserves your original configuration
+- ✅ Backs up existing `nuget.config` to `nuget.config.backup`
+- ✅ Creates a new `nuget.config` with authentication
+- ✅ Preserves your original configuration
 
 To restore the original config after your workflow:
 
@@ -209,7 +209,7 @@ dotnet nuget add source https://nuget.pkg.github.com/EagleViewEnt/index.json \
 ```
 
 **Create a PAT (Personal Access Token):**
-1. Go to GitHub Settings ? Developer settings ? Personal access tokens
+1. Go to GitHub Settings → Developer settings → Personal access tokens
 2. Generate new token (classic)
 3. Select scope: `read:packages`
 4. Copy and use in the command above
@@ -221,7 +221,7 @@ dotnet nuget add source https://nuget.pkg.github.com/EagleViewEnt/index.json \
 | **Manual dotnet nuget add** | Simple | Often fails in CI, no error handling |
 | **nuget.config in repo** | Works | Requires committing tokens (security risk) |
 | **Environment variables** | Secure | Complex, doesn't always work |
-| **This action** | ? Works reliably<br>? Secure<br>? No config needed<br>? Dual auth methods | Requires composite action support |
+| **This action** | ✅ Works reliably<br>✅ Secure<br>✅ No config needed<br>✅ Dual auth methods | Requires composite action support |
 
 ## License
 
