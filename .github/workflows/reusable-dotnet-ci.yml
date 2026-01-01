@@ -1,119 +1,368 @@
-name: Reusable .NET CI Workflow
+name: Reusable .NET CI/CD
 
 on:
   workflow_call:
     inputs:
-      dotnet-version:
-        description: '.NET SDK version to use'
+      # NEW: Config-based mode
+      config-file:
+        description: 'Path to workflow-config.json for config-based mode'
         required: false
         type: string
-        default: '10.0.x'
+      
+      # LEGACY: Maintain backward compatibility
+      dotnet-version:
+        description: 'Legacy: .NET SDK version (e.g., 8.0.x)'
+        required: false
+        type: string
       build-configuration:
-        description: 'Build configuration (Debug/Release)'
+        description: 'Legacy: Build configuration (Debug/Release)'
         required: false
         type: string
         default: 'Release'
       run-tests:
-        description: 'Whether to run tests'
+        description: 'Legacy: Whether to run tests'
         required: false
         type: boolean
         default: true
       enable-code-coverage:
-        description: 'Enable code coverage collection'
+        description: 'Legacy: Whether to enable code coverage'
         required: false
         type: boolean
-        default: true
+        default: false
       publish-packages:
-        description: 'Whether to publish NuGet packages'
+        description: 'Legacy: Whether to publish packages'
         required: false
         type: boolean
-        default: true
+        default: false
       package-projects:
-        description: 'List of projects to pack (JSON array of paths)'
+        description: 'Legacy: JSON array of project paths to package'
         required: false
         type: string
-        default: '[]'
       org-name:
-        description: 'GitHub organization name'
+        description: 'Legacy: Organization name for NuGet publishing'
         required: false
         type: string
-        default: 'EagleViewEnt'
-      package-access-config:
-        description: 'Path to package access configuration file'
-        required: false
-        type: string
-        default: '.github/workflow-config.json'
-    secrets:
-      CODECOV_TOKEN:
-        required: false
-
-permissions:
-  contents: read
-  packages: write
 
 jobs:
-  build-test-publish:
-    runs-on: windows-latest
-
+  setup:
+    name: Setup and Discovery
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.detect-mode.outputs.mode }}
+      dotnet-version: ${{ steps.config.outputs.dotnet-version }}
+      build-config: ${{ steps.config.outputs.build-config }}
+      run-tests: ${{ steps.config.outputs.run-tests }}
+      code-coverage: ${{ steps.config.outputs.code-coverage }}
+      publish-packages: ${{ steps.config.outputs.publish-packages }}
+      packable-projects: ${{ steps.config.outputs.packable-projects }}
+      org-name: ${{ steps.config.outputs.org-name }}
+    
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: ${{ inputs.dotnet-version }}
-
-      - name: Authenticate to GitHub Packages
-        run: |
-          dotnet nuget remove source github 2>&1 || true
-          dotnet nuget add source --username ${{ github.actor }} --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/${{ inputs.org-name }}/index.json"
-
-      - name: Restore
-        run: dotnet restore
-
-      - name: Build
-        run: dotnet build -c ${{ inputs.build-configuration }} --no-restore
-
-      - name: Test
-        if: ${{ inputs.run-tests }}
-        run: dotnet test -c ${{ inputs.build-configuration }} --no-build --verbosity normal --collect:"XPlat Code Coverage"
-
-      - name: Upload coverage
-        if: ${{ inputs.run-tests && inputs.enable-code-coverage }}
-        uses: codecov/codecov-action@v4
-        with:
-          directory: ./tests
-          files: '**/coverage.cobertura.xml'
-          fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
-
-      - name: Pack NuGet packages
-        if: ${{ inputs.publish-packages && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          fetch-depth: 0  # Required for MinVer and full git history
+      
+      - name: Detect workflow mode
+        id: detect-mode
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
-          $projects = '${{ inputs.package-projects }}' | ConvertFrom-Json
-          if ($projects.Count -eq 0) {
-            Write-Host "Packing all packable projects..."
-            dotnet pack -c ${{ inputs.build-configuration }} -o artifacts --no-build
+          if ("${{ inputs.config-file }}" -ne "") {
+            echo "mode=config" >> $env:GITHUB_OUTPUT
+            Write-Host "✓ Using config-based mode with file: ${{ inputs.config-file }}"
           } else {
-            foreach ($project in $projects) {
-              Write-Host "Packing: $project"
-              dotnet pack "$project" -c ${{ inputs.build-configuration }} -o artifacts --no-build
+            echo "mode=legacy" >> $env:GITHUB_OUTPUT
+            Write-Host "✓ Using legacy parameter mode"
+          }
+      
+      - name: Load configuration
+        id: config
+        shell: pwsh
+        run: |
+          $mode = "${{ steps.detect-mode.outputs.mode }}"
+          
+          if ($mode -eq "config") {
+            # ===== CONFIG-BASED MODE =====
+            $configPath = "${{ inputs.config-file }}"
+            Write-Host "================================================"
+            Write-Host "   Configuration-Based Workflow"
+            Write-Host "================================================"
+            Write-Host "Reading config from: $configPath"
+            Write-Host ""
+            
+            if (-not (Test-Path $configPath)) {
+              Write-Error "Config file not found: $configPath"
+              exit 1
+            }
+            
+            $config = Get-Content $configPath -Raw | ConvertFrom-Json
+            
+            # Extract workflow values
+            $dotnetVersion = $config.workflow.'dotnet-version'
+            $buildConfig = $config.workflow.'build-configuration'
+            $runTests = $config.workflow.'run-tests'.ToString().ToLower()
+            $codeCoverage = $config.workflow.'enable-code-coverage'.ToString().ToLower()
+            $publishPackages = $config.packages.publish.ToString().ToLower()
+            $orgName = $config.authentication.'org-name'
+            
+            Write-Host "📋 Configuration:"
+            Write-Host "   .NET Version: $dotnetVersion"
+            Write-Host "   Build Config: $buildConfig"
+            Write-Host "   Run Tests: $runTests"
+            Write-Host "   Code Coverage: $codeCoverage"
+            Write-Host "   Publish Packages: $publishPackages"
+            Write-Host "   Organization: $orgName"
+            Write-Host ""
+            
+            # Auto-discover packable projects
+            if ($config.packages.'auto-discover') {
+              Write-Host "🔍 Auto-discovering packable projects..."
+              Write-Host ""
+              
+              $pattern = $config.packages.discovery.'search-pattern'
+              $propertyFilter = $config.packages.discovery.'property-filter'
+              $excludePatterns = $config.packages.discovery.'exclude-patterns'
+              
+              Write-Host "   Search Pattern: $pattern"
+              Write-Host "   Property Filter: <$propertyFilter>true</$propertyFilter>"
+              Write-Host "   Exclude Patterns: $($excludePatterns -join ', ')"
+              Write-Host ""
+              
+              $allProjects = Get-ChildItem -Path $pattern -Recurse -ErrorAction SilentlyContinue
+              
+              $packableProjects = $allProjects | Where-Object {
+                $path = $_.FullName
+                
+                # Check exclusions
+                foreach ($excludePattern in $excludePatterns) {
+                  if ($path -like "*$excludePattern*") {
+                    return $false
+                  }
+                }
+                
+                # Check for IsPackable property
+                try {
+                  $content = Get-Content $path -Raw -ErrorAction Stop
+                  if ($content -match "<$propertyFilter>true</$propertyFilter>") {
+                    Write-Host "   ✓ Found: $($_.Name)"
+                    return $true
+                  }
+                } catch {
+                  Write-Host "   ⚠️  Error reading: $($_.Name)"
+                }
+                return $false
+              } | ForEach-Object {
+                # Convert to relative paths with forward slashes
+                $relativePath = $_.FullName.Replace("$PWD\", "").Replace("$PWD/", "").Replace("\", "/")
+                return $relativePath
+              }
+              
+              $packableJson = $packableProjects | ConvertTo-Json -Compress
+              if ($null -eq $packableJson -or $packableJson -eq "null") { 
+                $packableJson = "[]" 
+              }
+              
+              Write-Host ""
+              Write-Host "================================================"
+              Write-Host "   Discovery Results"
+              Write-Host "================================================"
+              Write-Host "Found $($packableProjects.Count) packable project(s)"
+              Write-Host ""
+              
+              if ($packableProjects.Count -eq 0) {
+                Write-Host "⚠️  No packable projects found!"
+                Write-Host "💡 Tip: Make sure projects have <$propertyFilter>true</$propertyFilter>"
+              }
+            } else {
+              $packableJson = "[]"
+              Write-Host "⚠️  Auto-discovery disabled in config"
+            }
+          } else {
+            # ===== LEGACY PARAMETER MODE =====
+            Write-Host "================================================"
+            Write-Host "   Legacy Parameter Mode"
+            Write-Host "================================================"
+            Write-Host ""
+            
+            $dotnetVersion = "${{ inputs.dotnet-version }}"
+            $buildConfig = "${{ inputs.build-configuration }}"
+            $runTests = "${{ inputs.run-tests }}".ToLower()
+            $codeCoverage = "${{ inputs.enable-code-coverage }}".ToLower()
+            $publishPackages = "${{ inputs.publish-packages }}".ToLower()
+            $packableJson = "${{ inputs.package-projects }}"
+            $orgName = "${{ inputs.org-name }}"
+            
+            # Validate required legacy parameters
+            if ([string]::IsNullOrWhiteSpace($dotnetVersion)) {
+              Write-Error "dotnet-version is required in legacy mode"
+              exit 1
+            }
+            
+            Write-Host "📋 Parameters:"
+            Write-Host "   .NET Version: $dotnetVersion"
+            Write-Host "   Build Config: $buildConfig"
+            Write-Host "   Run Tests: $runTests"
+            Write-Host "   Code Coverage: $codeCoverage"
+            Write-Host "   Publish Packages: $publishPackages"
+            Write-Host "   Organization: $orgName"
+            Write-Host ""
+            
+            if ($packableJson -and $packableJson -ne "[]") {
+              $projectCount = ($packableJson | ConvertFrom-Json).Count
+              Write-Host "📦 Package Projects: $projectCount project(s)"
             }
           }
+          
+          Write-Host ""
+          Write-Host "================================================"
+          Write-Host ""
+          
+          # Output all values
+          echo "dotnet-version=$dotnetVersion" >> $env:GITHUB_OUTPUT
+          echo "build-config=$buildConfig" >> $env:GITHUB_OUTPUT
+          echo "run-tests=$runTests" >> $env:GITHUB_OUTPUT
+          echo "code-coverage=$codeCoverage" >> $env:GITHUB_OUTPUT
+          echo "publish-packages=$publishPackages" >> $env:GITHUB_OUTPUT
+          echo "packable-projects=$packableJson" >> $env:GITHUB_OUTPUT
+          echo "org-name=$orgName" >> $env:GITHUB_OUTPUT
 
-      - name: Push to GitHub Packages
-        if: ${{ inputs.publish-packages && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+  build:
+    name: Build
+    needs: setup
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
+      
+      - name: Restore dependencies
+        run: dotnet restore
+      
+      - name: Build
+        run: dotnet build --no-restore --configuration ${{ needs.setup.outputs.build-config }}
+
+  test:
+    name: Test
+    needs: [setup, build]
+    runs-on: ubuntu-latest
+    if: needs.setup.outputs.run-tests == 'true'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
+      
+      - name: Run tests
+        run: dotnet test --configuration ${{ needs.setup.outputs.build-config }} --no-build --verbosity normal
+      
+      - name: Generate code coverage report
+        if: needs.setup.outputs.code-coverage == 'true'
+        run: dotnet test --configuration ${{ needs.setup.outputs.build-config }} --no-build --collect:"XPlat Code Coverage"
+      
+      - name: Upload coverage reports
+        if: needs.setup.outputs.code-coverage == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: '**/TestResults/**/coverage.cobertura.xml'
+
+  package:
+    name: Package
+    needs: [setup, build, test]
+    runs-on: ubuntu-latest
+    if: |
+      needs.setup.outputs.publish-packages == 'true' && 
+      needs.setup.outputs.packable-projects != '[]' &&
+      needs.setup.outputs.packable-projects != ''
+    
+    strategy:
+      matrix:
+        project: ${{ fromJson(needs.setup.outputs.packable-projects) }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for MinVer
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
+      
+      - name: Pack project
+        run: |
+          echo "Packing: ${{ matrix.project }}"
+          dotnet pack "${{ matrix.project }}" \
+            --configuration ${{ needs.setup.outputs.build-config }} \
+            --output ./packages \
+            --no-build
+      
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ hashFiles(matrix.project) }}
+          path: ./packages/*.nupkg
+          retention-days: 90
+      
+      - name: Publish to GitHub Packages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "Publishing packages to GitHub Packages..."
+          dotnet nuget push ./packages/*.nupkg \
+            --source https://nuget.pkg.github.com/${{ needs.setup.outputs.org-name }}/index.json \
+            --api-key ${{ secrets.GITHUB_TOKEN }} \
+            --skip-duplicate \
+            --no-symbols
+
+  summary:
+    name: Workflow Summary
+    needs: [setup, build, test, package]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Generate summary
         shell: pwsh
         run: |
-          $source = "https://nuget.pkg.github.com/${{ inputs.org-name }}/index.json"
-          Get-ChildItem artifacts -Filter *.nupkg | ForEach-Object {
-            Write-Host "Pushing $($_.Name)..."
-            dotnet nuget push $_.FullName --api-key ${{ secrets.GITHUB_TOKEN }} --source $source --skip-duplicate
+          $mode = "${{ needs.setup.outputs.mode }}"
+          $packableProjects = '${{ needs.setup.outputs.packable-projects }}'
+          
+          echo "## 📊 Workflow Summary" >> $env:GITHUB_STEP_SUMMARY
+          echo "" >> $env:GITHUB_STEP_SUMMARY
+          echo "**Mode:** $mode" >> $env:GITHUB_STEP_SUMMARY
+          echo "**Configuration:** ${{ needs.setup.outputs.build-config }}" >> $env:GITHUB_STEP_SUMMARY
+          echo "**.NET Version:** ${{ needs.setup.outputs.dotnet-version }}" >> $env:GITHUB_STEP_SUMMARY
+          echo "" >> $env:GITHUB_STEP_SUMMARY
+          
+          if ($packableProjects -and $packableProjects -ne "[]") {
+            $projects = $packableProjects | ConvertFrom-Json
+            echo "### 📦 Packable Projects ($($projects.Count))" >> $env:GITHUB_STEP_SUMMARY
+            echo "" >> $env:GITHUB_STEP_SUMMARY
+            foreach ($proj in $projects) {
+              echo "- \`$proj\`" >> $env:GITHUB_STEP_SUMMARY
+            }
+          } else {
+            echo "### 📦 No packages configured" >> $env:GITHUB_STEP_SUMMARY
           }
-          Get-ChildItem artifacts -Filter *.snupkg | ForEach-Object {
-            Write-Host "Pushing symbols $($_.Name)..."
-            dotnet nuget push $_.FullName --api-key ${{ secrets.GITHUB_TOKEN }} --source $source --skip-duplicate
-          }
+          
+          echo "" >> $env:GITHUB_STEP_SUMMARY
+          echo "### ✅ Job Status" >> $env:GITHUB_STEP_SUMMARY
+          echo "" >> $env:GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $env:GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $env:GITHUB_STEP_SUMMARY
+          echo "| Setup | ${{ needs.setup.result }} |" >> $env:GITHUB_STEP_SUMMARY
+          echo "| Build | ${{ needs.build.result }} |" >> $env:GITHUB_STEP_SUMMARY
+          echo "| Test | ${{ needs.test.result }} |" >> $env:GITHUB_STEP_SUMMARY
+          echo "| Package | ${{ needs.package.result }} |" >> $env:GITHUB_STEP_SUMMARY
