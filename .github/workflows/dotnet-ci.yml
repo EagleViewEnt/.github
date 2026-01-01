@@ -87,12 +87,12 @@ jobs:
           }
           
           if ($fullBuild) {
-            Write-Host "???  FULL BUILD MODE"
+            Write-Host "[FULL BUILD] Full build mode enabled"
             Write-Host "Reason: $reason"
             echo "incremental=false" >> $env:GITHUB_OUTPUT
             echo "reason=$reason" >> $env:GITHUB_OUTPUT
           } else {
-            Write-Host "? INCREMENTAL BUILD MODE (default)"
+            Write-Host "[INCREMENTAL] Incremental build mode (default)"
             Write-Host "Reason: Normal development - build only changed projects"
             echo "incremental=true" >> $env:GITHUB_OUTPUT
             echo "reason=Auto-incremental (default for normal development)" >> $env:GITHUB_OUTPUT
@@ -110,7 +110,8 @@ jobs:
 
   setup:
     needs: [detect-mode, detect-changes]
-    if: always() && needs.detect-mode.result == 'success'
+    # FIXED: Only run if we're in full build mode OR if incremental detected actual code changes
+    if: always() && needs.detect-mode.result == 'success' && (needs.detect-mode.outputs.incremental == 'false' || needs.detect-changes.outputs.has-changes == 'true')
     uses: ./.github/workflows/_setup-and-discovery.yml
     with:
       config-file: ${{ inputs.config-file }}
