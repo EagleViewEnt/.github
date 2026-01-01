@@ -1,0 +1,253 @@
+name: Setup and Discovery
+
+on:
+  workflow_call:
+    inputs:
+      # Config-based mode
+      config-file:
+        description: 'Path to workflow-config.json'
+        required: false
+        type: string
+      
+      # Legacy mode inputs
+      dotnet-version:
+        description: 'Legacy: .NET SDK version'
+        required: false
+        type: string
+      build-configuration:
+        description: 'Legacy: Build configuration'
+        required: false
+        type: string
+        default: 'Release'
+      run-tests:
+        description: 'Legacy: Whether to run tests'
+        required: false
+        type: boolean
+        default: true
+      enable-code-coverage:
+        description: 'Legacy: Whether to enable code coverage'
+        required: false
+        type: boolean
+        default: false
+      publish-packages:
+        description: 'Legacy: Whether to publish packages'
+        required: false
+        type: boolean
+        default: false
+      package-projects:
+        description: 'Legacy: JSON array of project paths'
+        required: false
+        type: string
+      org-name:
+        description: 'Legacy: Organization name'
+        required: false
+        type: string
+    
+    outputs:
+      mode:
+        description: 'Workflow mode (config or legacy)'
+        value: ${{ jobs.setup.outputs.mode }}
+      dotnet-version:
+        description: '.NET SDK version'
+        value: ${{ jobs.setup.outputs.dotnet-version }}
+      build-config:
+        description: 'Build configuration'
+        value: ${{ jobs.setup.outputs.build-config }}
+      run-tests:
+        description: 'Whether to run tests'
+        value: ${{ jobs.setup.outputs.run-tests }}
+      code-coverage:
+        description: 'Whether code coverage is enabled'
+        value: ${{ jobs.setup.outputs.code-coverage }}
+      publish-packages:
+        description: 'Whether to publish packages'
+        value: ${{ jobs.setup.outputs.publish-packages }}
+      packable-projects:
+        description: 'JSON array of packable projects'
+        value: ${{ jobs.setup.outputs.packable-projects }}
+      org-name:
+        description: 'Organization name'
+        value: ${{ jobs.setup.outputs.org-name }}
+
+jobs:
+  setup:
+    name: Setup and Discovery
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.detect-mode.outputs.mode }}
+      dotnet-version: ${{ steps.config.outputs.dotnet-version }}
+      build-config: ${{ steps.config.outputs.build-config }}
+      run-tests: ${{ steps.config.outputs.run-tests }}
+      code-coverage: ${{ steps.config.outputs.code-coverage }}
+      publish-packages: ${{ steps.config.outputs.publish-packages }}
+      packable-projects: ${{ steps.config.outputs.packable-projects }}
+      org-name: ${{ steps.config.outputs.org-name }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Detect workflow mode
+        id: detect-mode
+        shell: pwsh
+        run: |
+          if ("${{ inputs.config-file }}" -ne "") {
+            echo "mode=config" >> $env:GITHUB_OUTPUT
+            Write-Host "? Using config-based mode with file: ${{ inputs.config-file }}"
+          } else {
+            echo "mode=legacy" >> $env:GITHUB_OUTPUT
+            Write-Host "? Using legacy parameter mode"
+          }
+      
+      - name: Load configuration
+        id: config
+        shell: pwsh
+        run: |
+          $mode = "${{ steps.detect-mode.outputs.mode }}"
+          
+          if ($mode -eq "config") {
+            # ===== CONFIG-BASED MODE =====
+            $configPath = "${{ inputs.config-file }}"
+            Write-Host "================================================"
+            Write-Host "   Configuration-Based Workflow"
+            Write-Host "================================================"
+            Write-Host "Reading config from: $configPath"
+            Write-Host ""
+            
+            if (-not (Test-Path $configPath)) {
+              Write-Error "Config file not found: $configPath"
+              exit 1
+            }
+            
+            $config = Get-Content $configPath -Raw | ConvertFrom-Json
+            
+            # Extract workflow values
+            $dotnetVersion = $config.workflow.'dotnet-version'
+            $buildConfig = $config.workflow.'build-configuration'
+            $runTests = $config.workflow.'run-tests'.ToString().ToLower()
+            $codeCoverage = $config.workflow.'enable-code-coverage'.ToString().ToLower()
+            $publishPackages = $config.packages.publish.ToString().ToLower()
+            $orgName = $config.authentication.'org-name'
+            
+            Write-Host "?? Configuration:"
+            Write-Host "   .NET Version: $dotnetVersion"
+            Write-Host "   Build Config: $buildConfig"
+            Write-Host "   Run Tests: $runTests"
+            Write-Host "   Code Coverage: $codeCoverage"
+            Write-Host "   Publish Packages: $publishPackages"
+            Write-Host "   Organization: $orgName"
+            Write-Host ""
+            
+            # Auto-discover packable projects
+            if ($config.packages.'auto-discover') {
+              Write-Host "?? Auto-discovering packable projects..."
+              Write-Host ""
+              
+              $pattern = $config.packages.discovery.'search-pattern'
+              $propertyFilter = $config.packages.discovery.'property-filter'
+              $excludePatterns = $config.packages.discovery.'exclude-patterns'
+              
+              Write-Host "   Search Pattern: $pattern"
+              Write-Host "   Property Filter: <$propertyFilter>true</$propertyFilter>"
+              Write-Host "   Exclude Patterns: $($excludePatterns -join ', ')"
+              Write-Host ""
+              
+              $allProjects = Get-ChildItem -Path $pattern -Recurse -ErrorAction SilentlyContinue
+              
+              $packableProjects = $allProjects | Where-Object {
+                $path = $_.FullName
+                
+                # Check exclusions
+                foreach ($excludePattern in $excludePatterns) {
+                  if ($path -like "*$excludePattern*") {
+                    return $false
+                  }
+                }
+                
+                # Check for IsPackable property
+                try {
+                  $content = Get-Content $path -Raw -ErrorAction Stop
+                  if ($content -match "<$propertyFilter>true</$propertyFilter>") {
+                    Write-Host "   ? Found: $($_.Name)"
+                    return $true
+                  }
+                } catch {
+                  Write-Host "   ??  Error reading: $($_.Name)"
+                }
+                return $false
+              } | ForEach-Object {
+                # Convert to relative paths with forward slashes
+                $relativePath = $_.FullName.Replace("$PWD\", "").Replace("$PWD/", "").Replace("\", "/")
+                return $relativePath
+              }
+              
+              $packableJson = $packableProjects | ConvertTo-Json -Compress
+              if ($null -eq $packableJson -or $packableJson -eq "null") { 
+                $packableJson = "[]" 
+              }
+              
+              Write-Host ""
+              Write-Host "================================================"
+              Write-Host "   Discovery Results"
+              Write-Host "================================================"
+              Write-Host "Found $($packableProjects.Count) packable project(s)"
+              Write-Host ""
+              
+              if ($packableProjects.Count -eq 0) {
+                Write-Host "??  No packable projects found!"
+                Write-Host "?? Tip: Make sure projects have <$propertyFilter>true</$propertyFilter>"
+              }
+            } else {
+              $packableJson = "[]"
+              Write-Host "??  Auto-discovery disabled in config"
+            }
+          } else {
+            # ===== LEGACY PARAMETER MODE =====
+            Write-Host "================================================"
+            Write-Host "   Legacy Parameter Mode"
+            Write-Host "================================================"
+            Write-Host ""
+            
+            $dotnetVersion = "${{ inputs.dotnet-version }}"
+            $buildConfig = "${{ inputs.build-configuration }}"
+            $runTests = "${{ inputs.run-tests }}".ToLower()
+            $codeCoverage = "${{ inputs.enable-code-coverage }}".ToLower()
+            $publishPackages = "${{ inputs.publish-packages }}".ToLower()
+            $packableJson = "${{ inputs.package-projects }}"
+            $orgName = "${{ inputs.org-name }}"
+            
+            # Validate required legacy parameters
+            if ([string]::IsNullOrWhiteSpace($dotnetVersion)) {
+              Write-Error "dotnet-version is required in legacy mode"
+              exit 1
+            }
+            
+            Write-Host "?? Parameters:"
+            Write-Host "   .NET Version: $dotnetVersion"
+            Write-Host "   Build Config: $buildConfig"
+            Write-Host "   Run Tests: $runTests"
+            Write-Host "   Code Coverage: $codeCoverage"
+            Write-Host "   Publish Packages: $publishPackages"
+            Write-Host "   Organization: $orgName"
+            Write-Host ""
+            
+            if ($packableJson -and $packableJson -ne "[]") {
+              $projectCount = ($packableJson | ConvertFrom-Json).Count
+              Write-Host "?? Package Projects: $projectCount project(s)"
+            }
+          }
+          
+          Write-Host ""
+          Write-Host "================================================"
+          Write-Host ""
+          
+          # Output all values
+          echo "dotnet-version=$dotnetVersion" >> $env:GITHUB_OUTPUT
+          echo "build-config=$buildConfig" >> $env:GITHUB_OUTPUT
+          echo "run-tests=$runTests" >> $env:GITHUB_OUTPUT
+          echo "code-coverage=$codeCoverage" >> $env:GITHUB_OUTPUT
+          echo "publish-packages=$publishPackages" >> $env:GITHUB_OUTPUT
+          echo "packable-projects=$packableJson" >> $env:GITHUB_OUTPUT
+          echo "org-name=$orgName" >> $env:GITHUB_OUTPUT

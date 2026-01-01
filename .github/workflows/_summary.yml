@@ -1,0 +1,87 @@
+name: Summary
+
+on:
+  workflow_call:
+    inputs:
+      mode:
+        description: 'Workflow mode'
+        required: true
+        type: string
+      dotnet-version:
+        description: '.NET version'
+        required: true
+        type: string
+      build-config:
+        description: 'Build configuration'
+        required: true
+        type: string
+      packable-projects:
+        description: 'JSON array of packable projects'
+        required: true
+        type: string
+      setup-result:
+        description: 'Setup job result'
+        required: true
+        type: string
+      build-result:
+        description: 'Build job result'
+        required: true
+        type: string
+      test-result:
+        description: 'Test job result'
+        required: true
+        type: string
+      package-result:
+        description: 'Package job result'
+        required: true
+        type: string
+
+jobs:
+  summary:
+    name: Workflow Summary
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Generate summary
+        shell: pwsh
+        run: |
+          # Use here-string to safely handle JSON with special characters
+          $packableProjectsJson = @'
+          ${{ inputs.packable-projects }}
+          '@
+          
+          echo "## ?? Workflow Summary" >> $env:GITHUB_STEP_SUMMARY
+          echo "" >> $env:GITHUB_STEP_SUMMARY
+          echo "**Mode:** ${{ inputs.mode }}" >> $env:GITHUB_STEP_SUMMARY
+          echo "**Configuration:** ${{ inputs.build-config }}" >> $env:GITHUB_STEP_SUMMARY
+          echo "**.NET Version:** ${{ inputs.dotnet-version }}" >> $env:GITHUB_STEP_SUMMARY
+          echo "" >> $env:GITHUB_STEP_SUMMARY
+          
+          # Safely parse JSON with error handling
+          try {
+            if (-not [string]::IsNullOrWhiteSpace($packableProjectsJson) -and $packableProjectsJson -ne "[]") {
+              $projects = $packableProjectsJson | ConvertFrom-Json
+              echo "### ?? Packable Projects ($($projects.Count))" >> $env:GITHUB_STEP_SUMMARY
+              echo "" >> $env:GITHUB_STEP_SUMMARY
+              foreach ($proj in $projects) {
+                echo "- ``$proj``" >> $env:GITHUB_STEP_SUMMARY
+              }
+            } else {
+              echo "### ?? No packages configured" >> $env:GITHUB_STEP_SUMMARY
+            }
+          } catch {
+            echo "### ?? Packable Projects" >> $env:GITHUB_STEP_SUMMARY
+            echo "" >> $env:GITHUB_STEP_SUMMARY
+            echo "_(Error parsing project list)_" >> $env:GITHUB_STEP_SUMMARY
+          }
+          
+          echo "" >> $env:GITHUB_STEP_SUMMARY
+          echo "### ? Job Status" >> $env:GITHUB_STEP_SUMMARY
+          echo "" >> $env:GITHUB_STEP_SUMMARY
+          echo "| Job | Status |" >> $env:GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $env:GITHUB_STEP_SUMMARY
+          echo "| Setup | ${{ inputs.setup-result }} |" >> $env:GITHUB_STEP_SUMMARY
+          echo "| Build | ${{ inputs.build-result }} |" >> $env:GITHUB_STEP_SUMMARY
+          echo "| Test | ${{ inputs.test-result }} |" >> $env:GITHUB_STEP_SUMMARY
+          echo "| Package | ${{ inputs.package-result }} |" >> $env:GITHUB_STEP_SUMMARY

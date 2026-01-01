@@ -1,0 +1,66 @@
+name: Package
+
+on:
+  workflow_call:
+    inputs:
+      dotnet-version:
+        description: '.NET SDK version'
+        required: true
+        type: string
+      build-config:
+        description: 'Build configuration'
+        required: true
+        type: string
+      packable-projects:
+        description: 'JSON array of projects to package'
+        required: true
+        type: string
+      org-name:
+        description: 'Organization name for publishing'
+        required: true
+        type: string
+
+jobs:
+  package:
+    name: Package and Publish
+    runs-on: ubuntu-latest
+    if: inputs.packable-projects != '[]' && inputs.packable-projects != ''
+    
+    strategy:
+      matrix:
+        project: ${{ fromJson(inputs.packable-projects) }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for MinVer
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+      
+      - name: Pack project
+        run: |
+          echo "Packing: ${{ matrix.project }}"
+          dotnet pack "${{ matrix.project }}" \
+            --configuration ${{ inputs.build-config }} \
+            --output ./packages
+      
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ hashFiles(matrix.project) }}
+          path: ./packages/*.nupkg
+          retention-days: 90
+      
+      - name: Publish to GitHub Packages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "Publishing packages to GitHub Packages..."
+          dotnet nuget push ./packages/*.nupkg \
+            --source https://nuget.pkg.github.com/${{ inputs.org-name }}/index.json \
+            --api-key ${{ secrets.GITHUB_TOKEN }} \
+            --skip-duplicate \
+            --no-symbols

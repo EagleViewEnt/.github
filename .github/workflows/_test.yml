@@ -1,0 +1,53 @@
+name: Test
+
+on:
+  workflow_call:
+    inputs:
+      dotnet-version:
+        description: '.NET SDK version'
+        required: true
+        type: string
+      build-config:
+        description: 'Build configuration'
+        required: true
+        type: string
+      code-coverage:
+        description: 'Enable code coverage'
+        required: false
+        type: string
+        default: 'false'
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+      
+      # FIX: Build in test container since jobs are isolated
+      - name: Restore dependencies
+        run: dotnet restore
+      
+      - name: Build
+        run: dotnet build --no-restore --configuration ${{ inputs.build-config }}
+      
+      - name: Run tests
+        run: dotnet test --configuration ${{ inputs.build-config }} --no-build --verbosity normal
+      
+      - name: Generate code coverage report
+        if: inputs.code-coverage == 'true'
+        run: dotnet test --configuration ${{ inputs.build-config }} --no-build --collect:"XPlat Code Coverage"
+      
+      - name: Upload coverage reports
+        if: inputs.code-coverage == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: '**/TestResults/**/coverage.cobertura.xml'

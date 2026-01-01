@@ -1,0 +1,97 @@
+name: .NET CI/CD
+
+on:
+  workflow_call:
+    inputs:
+      # Config-based mode
+      config-file:
+        description: 'Path to workflow-config.json'
+        required: false
+        type: string
+      
+      # Legacy mode inputs (backward compatibility)
+      dotnet-version:
+        description: 'Legacy: .NET SDK version'
+        required: false
+        type: string
+      build-configuration:
+        description: 'Legacy: Build configuration'
+        required: false
+        type: string
+        default: 'Release'
+      run-tests:
+        description: 'Legacy: Whether to run tests'
+        required: false
+        type: boolean
+        default: true
+      enable-code-coverage:
+        description: 'Legacy: Whether to enable code coverage'
+        required: false
+        type: boolean
+        default: false
+      publish-packages:
+        description: 'Legacy: Whether to publish packages'
+        required: false
+        type: boolean
+        default: false
+      package-projects:
+        description: 'Legacy: JSON array of project paths'
+        required: false
+        type: string
+      org-name:
+        description: 'Legacy: Organization name'
+        required: false
+        type: string
+
+jobs:
+  setup:
+    uses: ./.github/workflows/_setup-and-discovery.yml
+    with:
+      config-file: ${{ inputs.config-file }}
+      dotnet-version: ${{ inputs.dotnet-version }}
+      build-configuration: ${{ inputs.build-configuration }}
+      run-tests: ${{ inputs.run-tests }}
+      enable-code-coverage: ${{ inputs.enable-code-coverage }}
+      publish-packages: ${{ inputs.publish-packages }}
+      package-projects: ${{ inputs.package-projects }}
+      org-name: ${{ inputs.org-name }}
+
+  build:
+    needs: setup
+    uses: ./.github/workflows/_build.yml
+    with:
+      dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
+      build-config: ${{ needs.setup.outputs.build-config }}
+
+  test:
+    needs: [setup, build]
+    if: needs.setup.outputs.run-tests == 'true'
+    uses: ./.github/workflows/_test.yml
+    with:
+      dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
+      build-config: ${{ needs.setup.outputs.build-config }}
+      code-coverage: ${{ needs.setup.outputs.code-coverage }}
+
+  package:
+    needs: [setup, build, test]
+    if: needs.setup.outputs.publish-packages == 'true'
+    uses: ./.github/workflows/_package.yml
+    with:
+      dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
+      build-config: ${{ needs.setup.outputs.build-config }}
+      packable-projects: ${{ needs.setup.outputs.packable-projects }}
+      org-name: ${{ needs.setup.outputs.org-name }}
+
+  summary:
+    needs: [setup, build, test, package]
+    if: always()
+    uses: ./.github/workflows/_summary.yml
+    with:
+      mode: ${{ needs.setup.outputs.mode }}
+      dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
+      build-config: ${{ needs.setup.outputs.build-config }}
+      packable-projects: ${{ needs.setup.outputs.packable-projects }}
+      setup-result: ${{ needs.setup.result }}
+      build-result: ${{ needs.build.result }}
+      test-result: ${{ needs.test.result }}
+      package-result: ${{ needs.package.result }}
