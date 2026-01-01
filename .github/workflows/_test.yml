@@ -20,18 +20,19 @@ on:
 jobs:
   test:
     name: Run Tests
-    runs-on: ubuntu-latest
+    runs-on: windows-latest  # Match the old workflow
     
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ inputs.dotnet-version }}
       
-      # FIX: Build in test container since jobs are isolated
       - name: Restore dependencies
         run: dotnet restore
       
@@ -39,11 +40,7 @@ jobs:
         run: dotnet build --no-restore --configuration ${{ inputs.build-config }}
       
       - name: Run tests
-        run: dotnet test --configuration ${{ inputs.build-config }} --no-build --verbosity normal
-      
-      - name: Generate code coverage report
-        if: inputs.code-coverage == 'true'
-        run: dotnet test --configuration ${{ inputs.build-config }} --no-build --collect:"XPlat Code Coverage"
+        run: dotnet test --configuration ${{ inputs.build-config }} --no-build --verbosity normal --collect:"XPlat Code Coverage"
       
       - name: Upload coverage reports
         if: inputs.code-coverage == 'true'
