@@ -68,12 +68,12 @@ jobs:
           )
           
           # Determine base reference based on event type
-          $baseRef = "${{ inputs.base-ref }}"
+          $baseRef = '${{ inputs.base-ref }}'
           $compareRef = "HEAD"
           
           if ($env:GITHUB_EVENT_NAME -eq "pull_request") {
             # PR: Compare PR branch against target branch
-            $baseRef = "${{ github.event.pull_request.base.sha }}"
+            $baseRef = '${{ github.event.pull_request.base.sha }}'
             Write-Host "[PR] Pull Request Mode: Comparing to $baseRef"
           } else {
             # Push: Compare current commit against parent (previous commit)
