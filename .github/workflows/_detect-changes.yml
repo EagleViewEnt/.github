@@ -25,7 +25,7 @@ on:
 jobs:
   detect:
     name: Detect Changed Projects
-    runs-on: windows-latest  # Use Windows for consistency
+    runs-on: windows-latest
     outputs:
       changed-projects: ${{ steps.detect.outputs.changed-projects }}
       has-changes: ${{ steps.detect.outputs.has-changes }}
@@ -47,24 +47,35 @@ jobs:
           Write-Host "================================================"
           Write-Host ""
           
-          # Determine base reference
+          # Determine base reference based on event type
           $baseRef = "${{ inputs.base-ref }}"
+          $compareRef = "HEAD"
+          
           if ($env:GITHUB_EVENT_NAME -eq "pull_request") {
+            # PR: Compare PR branch against target branch
             $baseRef = "${{ github.event.pull_request.base.sha }}"
             Write-Host "?? Pull Request Mode: Comparing to $baseRef"
           } else {
-            Write-Host "?? Push Mode: Comparing to origin/$baseRef"
-            $baseRef = "origin/$baseRef"
+            # Push: Compare current commit against parent (previous commit)
+            # This ensures we see the actual changes in this push
+            Write-Host "?? Push Mode: Comparing HEAD against parent commit"
+            $baseRef = "HEAD^"
           }
-          Write-Host ""
           
           # Get changed files
+          Write-Host ""
           Write-Host "?? Getting changed files..."
           try {
-            $changedFiles = git diff --name-only $baseRef HEAD 2>&1
+            $changedFiles = git diff --name-only $baseRef $compareRef 2>&1
             if ($LASTEXITCODE -ne 0) {
-              Write-Host "??  Git diff failed, falling back to HEAD~1"
-              $changedFiles = git diff --name-only HEAD~1 HEAD
+              Write-Host "??  Git diff failed, trying alternative method"
+              # Fallback: compare against origin/main
+              $baseRef = "origin/${{ inputs.base-ref }}"
+              $changedFiles = git diff --name-only $baseRef HEAD 2>&1
+              if ($LASTEXITCODE -ne 0) {
+                Write-Host "??  Fallback also failed, using HEAD~1"
+                $changedFiles = git diff --name-only HEAD~1 HEAD
+              }
             }
           } catch {
             Write-Host "??  Git diff exception: $($_.Exception.Message)"
@@ -87,8 +98,8 @@ jobs:
           # Find all project files with their directories
           Write-Host "?? Finding all projects..."
           $allProjects = Get-ChildItem -Path . -Filter "*.csproj" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-            $relativePath = $_.FullName.Replace("$PWD\", "").Replace("\", "/")
-            $relativeDir = $_.Directory.FullName.Replace("$PWD\", "").Replace("\", "/")
+            $relativePath = $_.FullName.Replace("$PWD\", "").Replace("$PWD/", "").Replace("\", "/")
+            $relativeDir = $_.Directory.FullName.Replace("$PWD\", "").Replace("$PWD/", "").Replace("\", "/")
             @{
               Path = $relativePath
               Directory = $relativeDir
