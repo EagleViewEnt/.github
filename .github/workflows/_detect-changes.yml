@@ -225,6 +225,41 @@ jobs:
           Write-Host ""
           Write-Host "[RESULT] Source projects: $($srcProjects.Count)"
           Write-Host "[RESULT] Test projects: $($testProjects.Count)"
+          
+          # For each changed source project, find and include corresponding test projects
+          Write-Host ""
+          Write-Host "[MAP] Finding test projects for changed source projects..."
+          $additionalTestProjects = @()
+          
+          foreach ($srcProj in $srcProjects) {
+            # Extract project name from path (e.g., "EagleViewEnt.Utilities.External" from "src/External/EagleViewEnt.Utilities.External.csproj")
+            $srcProjName = [System.IO.Path]::GetFileNameWithoutExtension($srcProj)
+            
+            # Look for matching test projects (e.g., "EagleViewEnt.Utilities.External.Tests.csproj")
+            $matchingTestProj = $allProjects | Where-Object { 
+              $_ -match '[\\/]tests[\\/]' -and 
+              $_ -match [regex]::Escape($srcProjName) -and
+              $_ -match '\.Tests\.csproj$'
+            } | Select-Object -First 1
+            
+            if ($matchingTestProj -and ($testProjects -notcontains $matchingTestProj) -and ($additionalTestProjects -notcontains $matchingTestProj)) {
+              $additionalTestProjects += $matchingTestProj
+              Write-Host "[TEST-RELATED] $srcProj -> $matchingTestProj"
+            }
+          }
+          
+          # Add related test projects to the main test projects list
+          if ($additionalTestProjects.Count -gt 0) {
+            Write-Host ""
+            Write-Host "[INFO] Adding $($additionalTestProjects.Count) related test project(s)"
+            $testProjects += $additionalTestProjects
+            $affectedProjects += $additionalTestProjects
+          }
+          
+          Write-Host ""
+          Write-Host "[FINAL] Total affected projects: $($affectedProjects.Count)"
+          Write-Host "[FINAL] Source projects: $($srcProjects.Count)"
+          Write-Host "[FINAL] Test projects: $($testProjects.Count)"
           Write-Host ""
           
           # Convert to JSON arrays
