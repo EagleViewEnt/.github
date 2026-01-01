@@ -95,10 +95,10 @@ jobs:
         run: |
           if ("${{ inputs.config-file }}" -ne "") {
             echo "mode=config" >> $env:GITHUB_OUTPUT
-            Write-Host "?? Using config-based mode with file: ${{ inputs.config-file }}"
+            Write-Host "⚙️ Using config-based mode with file: ${{ inputs.config-file }}"
           } else {
             echo "mode=legacy" >> $env:GITHUB_OUTPUT
-            Write-Host "?? Using legacy parameter mode"
+            Write-Host "🔧 Using legacy parameter mode"
           }
       
       - name: Load configuration
@@ -131,7 +131,7 @@ jobs:
             $publishPackages = $config.packages.publish.ToString().ToLower()
             $orgName = $config.authentication.'org-name'
             
-            Write-Host "?? Configuration:"
+            Write-Host "📋 Configuration:"
             Write-Host "   .NET Version: $dotnetVersion"
             Write-Host "   Build Config: $buildConfig"
             Write-Host "   Run Tests: $runTests"
@@ -142,7 +142,7 @@ jobs:
             
             # Auto-discover packable projects
             if ($config.packages.'auto-discover') {
-              Write-Host "?? Auto-discovering packable projects..."
+              Write-Host "🔍 Auto-discovering packable projects..."
               Write-Host ""
               
               $pattern = $config.packages.discovery.'search-pattern'
@@ -170,11 +170,11 @@ jobs:
                 try {
                   $content = Get-Content $path -Raw -ErrorAction Stop
                   if ($content -match "<$propertyFilter>true</$propertyFilter>") {
-                    Write-Host "   ? Found: $($_.Name)"
+                    Write-Host "   ✅ Found: $($_.Name)"
                     return $true
                   }
                 } catch {
-                  Write-Host "   ?? Error reading: $($_.Name)"
+                  Write-Host "   ⚠️ Error reading: $($_.Name)"
                 }
                 return $false
               } | ForEach-Object {
@@ -196,12 +196,12 @@ jobs:
               Write-Host ""
               
               if ($packableProjects.Count -eq 0) {
-                Write-Host "?? No packable projects found!"
-                Write-Host "?? Tip: Make sure projects have <$propertyFilter>true</$propertyFilter>"
+                Write-Host "⚠️ No packable projects found!"
+                Write-Host "💡 Tip: Make sure projects have <$propertyFilter>true</$propertyFilter>"
               }
             } else {
               $packableJson = "[]"
-              Write-Host "?? Auto-discovery disabled in config"
+              Write-Host "ℹ️ Auto-discovery disabled in config"
             }
           } else {
             # ===== LEGACY PARAMETER MODE =====
@@ -224,7 +224,7 @@ jobs:
               exit 1
             }
             
-            Write-Host "?? Parameters:"
+            Write-Host "📋 Parameters:"
             Write-Host "   .NET Version: $dotnetVersion"
             Write-Host "   Build Config: $buildConfig"
             Write-Host "   Run Tests: $runTests"
@@ -235,7 +235,7 @@ jobs:
             
             if ($packableJson -and $packableJson -ne "[]") {
               $projectCount = ($packableJson | ConvertFrom-Json).Count
-              Write-Host "?? Package Projects: $projectCount project(s)"
+              Write-Host "📦 Package Projects: $projectCount project(s)"
             }
           }
           
