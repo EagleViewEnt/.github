@@ -145,14 +145,16 @@ jobs:
 
   package:
     needs: [setup, build, test, detect-mode, detect-changes]
+    # Package if: publish enabled AND build succeeded AND (changes detected OR full build)
     if: always() && needs.setup.outputs.publish-packages == 'true' && needs.build.result == 'success'
     uses: ./.github/workflows/_package.yml
     secrets: inherit
     with:
       dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
       build-config: ${{ needs.setup.outputs.build-config }}
-      # Use changed source projects if incremental AND detect-changes succeeded, otherwise all packable projects
-      packable-projects: ${{ (needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.changed-src-projects) || needs.setup.outputs.packable-projects }}
+      # FIXED: Package changed source projects if incremental with changes, otherwise ALL packable projects
+      # This ensures packages are always created when <IsPackable>true</IsPackable> and changes exist
+      packable-projects: ${{ (needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.has-changes == 'true' && needs.detect-changes.outputs.changed-src-projects) || needs.setup.outputs.packable-projects }}
       org-name: ${{ needs.setup.outputs.org-name }}
 
   summary:

@@ -51,18 +51,27 @@ jobs:
           $baseRef = "${{ inputs.base-ref }}"
           if ($env:GITHUB_EVENT_NAME -eq "pull_request") {
             $baseRef = "${{ github.event.pull_request.base.sha }}"
-            Write-Host "Pull Request Mode: Comparing to $baseRef"
+            Write-Host "?? Pull Request Mode: Comparing to $baseRef"
           } else {
-            Write-Host "Push Mode: Comparing to origin/$baseRef"
+            Write-Host "?? Push Mode: Comparing to origin/$baseRef"
             $baseRef = "origin/$baseRef"
           }
+          Write-Host ""
           
           # Get changed files
-          Write-Host ""
-          Write-Host "Getting changed files..."
-          $changedFiles = git diff --name-only $baseRef HEAD
+          Write-Host "?? Getting changed files..."
+          try {
+            $changedFiles = git diff --name-only $baseRef HEAD 2>&1
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "??  Git diff failed, falling back to HEAD~1"
+              $changedFiles = git diff --name-only HEAD~1 HEAD
+            }
+          } catch {
+            Write-Host "??  Git diff exception: $($_.Exception.Message)"
+            $changedFiles = @()
+          }
           
-          if (-not $changedFiles) {
+          if (-not $changedFiles -or $changedFiles.Count -eq 0) {
             Write-Host "??  No changed files detected"
             echo "changed-projects=[]" >> $env:GITHUB_OUTPUT
             echo "has-changes=false" >> $env:GITHUB_OUTPUT
@@ -71,55 +80,73 @@ jobs:
             exit 0
           }
           
-          Write-Host "Changed files: $($changedFiles.Count)"
+          Write-Host "?? Changed files: $($changedFiles.Count)"
+          $changedFiles | ForEach-Object { Write-Host "  - $_" }
           Write-Host ""
           
-          # Find all project files
-          $allProjects = Get-ChildItem -Path . -Filter "*.csproj" -Recurse | ForEach-Object {
+          # Find all project files with their directories
+          Write-Host "?? Finding all projects..."
+          $allProjects = Get-ChildItem -Path . -Filter "*.csproj" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+            $relativePath = $_.FullName.Replace("$PWD\", "").Replace("\", "/")
+            $relativeDir = $_.Directory.FullName.Replace("$PWD\", "").Replace("\", "/")
             @{
-              Path = $_.FullName.Replace("$PWD\", "").Replace("$PWD/", "").Replace("\", "/")
-              Directory = $_.Directory.FullName.Replace("$PWD\", "").Replace("$PWD/", "").Replace("\", "/")
+              Path = $relativePath
+              Directory = $relativeDir
+              Name = $_.BaseName
             }
           }
+          Write-Host "?? Found $($allProjects.Count) total projects"
+          Write-Host ""
           
           # Map changed files to projects
           $changedProjects = @()
           $changedSrcProjects = @()
           $changedTestProjects = @()
           
+          Write-Host "?? Mapping changed files to projects..."
           foreach ($file in $changedFiles) {
-            $file = $file.Replace("\", "/")
+            # Normalize path separators to forward slash for comparison
+            $normalizedFile = $file.Replace("\", "/")
             
-            # Find which project this file belongs to
+            Write-Host "  Checking: $normalizedFile"
+            
+            # Find which project this file belongs to by checking if file path starts with project directory
+            $matchedProject = $null
             foreach ($project in $allProjects) {
-              if ($file.StartsWith($project.Directory)) {
-                $projectPath = $project.Path
-                
-                # Add to changed projects if not already there
-                if ($changedProjects -notcontains $projectPath) {
-                  $changedProjects += $projectPath
-                  Write-Host "? Found: $projectPath"
-                  
-                  # Categorize by type
-                  if ($projectPath -like "*/tests/*" -or $projectPath -like "*.Tests.csproj") {
-                    $changedTestProjects += $projectPath
-                  } else {
-                    $changedSrcProjects += $projectPath
-                  }
-                }
+              if ($normalizedFile.StartsWith($project.Directory + "/")) {
+                $matchedProject = $project
                 break
               }
             }
+            
+            if ($matchedProject) {
+              $projectPath = $matchedProject.Path
+              
+              # Add to changed projects if not already there
+              if ($changedProjects -notcontains $projectPath) {
+                $changedProjects += $projectPath
+                Write-Host "    ? Mapped to: $projectPath"
+                
+                # Categorize by type
+                if ($projectPath -like "*/tests/*" -or $projectPath -like "*.Tests.csproj") {
+                  $changedTestProjects += $projectPath
+                } else {
+                  $changedSrcProjects += $projectPath
+                }
+              }
+            } else {
+              Write-Host "    ??  No project found (workflow/config file?)"
+            }
           }
           
-          # Also include test projects for changed source projects
           Write-Host ""
-          Write-Host "Checking for related test projects..."
+          Write-Host "?? Checking for related test projects..."
+          # Include test projects for changed source projects
           foreach ($srcProject in $changedSrcProjects) {
-            # Extract project name from path (e.g., "EagleViewEnt.Utilities.Core")
+            # Extract project name (e.g., "EagleViewEnt.Utilities.Core")
             $projectName = [System.IO.Path]::GetFileNameWithoutExtension($srcProject)
             
-            # Look for corresponding test project
+            # Look for corresponding test project pattern
             $testProjectPattern = "*$projectName.Tests.csproj"
             $testProject = $allProjects | Where-Object { 
               $_.Path -like $testProjectPattern -and ($_.Path -like "*/tests/*" -or $_.Path -like "*.Tests.csproj")
@@ -128,7 +155,7 @@ jobs:
             if ($testProject -and $changedProjects -notcontains $testProject.Path) {
               $changedProjects += $testProject.Path
               $changedTestProjects += $testProject.Path
-              Write-Host "? Added test project: $($testProject.Path)"
+              Write-Host "  ? Auto-included test: $($testProject.Path)"
             }
           }
           
@@ -141,26 +168,38 @@ jobs:
           Write-Host "  Test projects: $($changedTestProjects.Count)"
           Write-Host ""
           
-          # Convert to JSON
-          $changedProjectsJson = $changedProjects | ConvertTo-Json -Compress
-          $changedSrcProjectsJson = $changedSrcProjects | ConvertTo-Json -Compress
-          $changedTestProjectsJson = $changedTestProjects | ConvertTo-Json -Compress
+          if ($changedProjects.Count -gt 0) {
+            Write-Host "?? Changed Projects:"
+            $changedProjects | ForEach-Object { Write-Host "  - $_" }
+            Write-Host ""
+          }
           
-          if ($null -eq $changedProjectsJson -or $changedProjectsJson -eq "null") { 
-            $changedProjectsJson = "[]" 
+          # Convert to JSON
+          $changedProjectsJson = if ($changedProjects.Count -gt 0) { 
+            $changedProjects | ConvertTo-Json -Compress -AsArray
+          } else { 
+            "[]" 
           }
-          if ($null -eq $changedSrcProjectsJson -or $changedSrcProjectsJson -eq "null") {
-            $changedSrcProjectsJson = "[]"
+          
+          $changedSrcProjectsJson = if ($changedSrcProjects.Count -gt 0) {
+            $changedSrcProjects | ConvertTo-Json -Compress -AsArray
+          } else {
+            "[]"
           }
-          if ($null -eq $changedTestProjectsJson -or $changedTestProjectsJson -eq "null") {
-            $changedTestProjectsJson = "[]"
+          
+          $changedTestProjectsJson = if ($changedTestProjects.Count -gt 0) {
+            $changedTestProjects | ConvertTo-Json -Compress -AsArray
+          } else {
+            "[]"
           }
           
           # Output results
+          $hasChanges = $changedProjects.Count -gt 0
           echo "changed-projects=$changedProjectsJson" >> $env:GITHUB_OUTPUT
           echo "changed-src-projects=$changedSrcProjectsJson" >> $env:GITHUB_OUTPUT
           echo "changed-test-projects=$changedTestProjectsJson" >> $env:GITHUB_OUTPUT
-          echo "has-changes=true" >> $env:GITHUB_OUTPUT
+          echo "has-changes=$hasChanges" >> $env:GITHUB_OUTPUT
           
-          Write-Host "Detection complete!"
+          Write-Host "? Detection complete!"
+          Write-Host "   has-changes: $hasChanges"
           Write-Host "================================================"
