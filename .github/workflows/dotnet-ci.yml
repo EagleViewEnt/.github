@@ -129,8 +129,8 @@ jobs:
     with:
       dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
       build-config: ${{ needs.setup.outputs.build-config }}
-      # Use changed projects if incremental, empty array for full build
-      filter-projects: ${{ needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.outputs.changed-projects || '[]' }}
+      # Use changed projects if incremental AND detect-changes succeeded, otherwise empty (full build)
+      filter-projects: ${{ (needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.changed-projects) || '[]' }}
 
   test:
     needs: [setup, build, detect-mode, detect-changes]
@@ -140,8 +140,8 @@ jobs:
       dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
       build-config: ${{ needs.setup.outputs.build-config }}
       code-coverage: ${{ needs.setup.outputs.code-coverage }}
-      # Use changed projects if incremental, empty array for full test
-      filter-projects: ${{ needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.outputs.changed-projects || '[]' }}
+      # Use changed projects if incremental AND detect-changes succeeded, otherwise empty (full test)
+      filter-projects: ${{ (needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.changed-projects) || '[]' }}
 
   package:
     needs: [setup, build, test, detect-mode, detect-changes]
@@ -151,8 +151,8 @@ jobs:
     with:
       dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
       build-config: ${{ needs.setup.outputs.build-config }}
-      # Use changed source projects if incremental, all projects if full
-      packable-projects: ${{ needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.outputs.changed-src-projects || needs.setup.outputs.packable-projects }}
+      # Use changed source projects if incremental AND detect-changes succeeded, otherwise all packable projects
+      packable-projects: ${{ (needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.changed-src-projects) || needs.setup.outputs.packable-projects }}
       org-name: ${{ needs.setup.outputs.org-name }}
 
   summary:
@@ -171,4 +171,5 @@ jobs:
       # Pass build mode information
       incremental-build: ${{ needs.detect-mode.outputs.incremental }}
       incremental-reason: ${{ needs.detect-mode.outputs.reason }}
-      changed-projects: ${{ needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.outputs.changed-projects || '[]' }}
+      # Use changed projects if detect-changes succeeded, otherwise empty array
+      changed-projects: ${{ (needs.detect-changes.result == 'success' && needs.detect-changes.outputs.changed-projects) || '[]' }}
