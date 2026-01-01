@@ -95,10 +95,10 @@ jobs:
         run: |
           if ("${{ inputs.config-file }}" -ne "") {
             echo "mode=config" >> $env:GITHUB_OUTPUT
-            Write-Host "? Using config-based mode with file: ${{ inputs.config-file }}"
+            Write-Host "?? Using config-based mode with file: ${{ inputs.config-file }}"
           } else {
             echo "mode=legacy" >> $env:GITHUB_OUTPUT
-            Write-Host "? Using legacy parameter mode"
+            Write-Host "?? Using legacy parameter mode"
           }
       
       - name: Load configuration
@@ -174,7 +174,7 @@ jobs:
                     return $true
                   }
                 } catch {
-                  Write-Host "   ??  Error reading: $($_.Name)"
+                  Write-Host "   ?? Error reading: $($_.Name)"
                 }
                 return $false
               } | ForEach-Object {
@@ -196,12 +196,12 @@ jobs:
               Write-Host ""
               
               if ($packableProjects.Count -eq 0) {
-                Write-Host "??  No packable projects found!"
+                Write-Host "?? No packable projects found!"
                 Write-Host "?? Tip: Make sure projects have <$propertyFilter>true</$propertyFilter>"
               }
             } else {
               $packableJson = "[]"
-              Write-Host "??  Auto-discovery disabled in config"
+              Write-Host "?? Auto-discovery disabled in config"
             }
           } else {
             # ===== LEGACY PARAMETER MODE =====
@@ -239,15 +239,13 @@ jobs:
             }
           }
           
-          Write-Host ""
+          # Final output
+          $env:GITHUB_OUTPUT = "dotnet-version=$dotnetVersion`nbuild-config=$buildConfig`nrun-tests=$runTests`ncode-coverage=$codeCoverage`npublish-packages=$publishPackages`npackable-projects=$packableJson`norg-name=$orgName`nmode=$mode"
+      
+      - name: Display configuration
+        shell: pwsh
+        run: |
           Write-Host "================================================"
-          Write-Host ""
-          
-          # Output all values
-          echo "dotnet-version=$dotnetVersion" >> $env:GITHUB_OUTPUT
-          echo "build-config=$buildConfig" >> $env:GITHUB_OUTPUT
-          echo "run-tests=$runTests" >> $env:GITHUB_OUTPUT
-          echo "code-coverage=$codeCoverage" >> $env:GITHUB_OUTPUT
-          echo "publish-packages=$publishPackages" >> $env:GITHUB_OUTPUT
-          echo "packable-projects=$packableJson" >> $env:GITHUB_OUTPUT
-          echo "org-name=$orgName" >> $env:GITHUB_OUTPUT
+          Write-Host "   Effective Configuration"
+          Write-Host "================================================"
+          Write-Host "${{ needs.setup.outputs.env }}"

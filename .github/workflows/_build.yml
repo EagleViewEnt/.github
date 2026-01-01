@@ -42,14 +42,14 @@ jobs:
           $filterProjects = '${{ inputs.filter-projects }}'
           
           if ($filterProjects -and $filterProjects -ne '[]') {
-            Write-Host "?? Incremental Build Mode"
+            Write-Host "? Incremental Build Mode"
             Write-Host "Building specific projects only..."
             Write-Host ""
             
             $projects = $filterProjects | ConvertFrom-Json
             
             foreach ($project in $projects) {
-              Write-Host "Building: $project"
+              Write-Host "?? Building: $project"
               dotnet build "$project" --no-restore --configuration ${{ inputs.build-config }}
               
               if ($LASTEXITCODE -ne 0) {
@@ -58,7 +58,7 @@ jobs:
               }
             }
           } else {
-            Write-Host "??? Full Build Mode"
+            Write-Host "?? Full Build Mode"
             Write-Host "Building entire solution..."
             dotnet build --no-restore --configuration ${{ inputs.build-config }}
           }

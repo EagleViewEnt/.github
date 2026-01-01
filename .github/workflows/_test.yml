@@ -1,4 +1,4 @@
-name: Test
+﻿name: Test
 
 on:
   workflow_call:
@@ -50,22 +50,22 @@ jobs:
           $filterProjects = '${{ inputs.filter-projects }}'
           
           if ($filterProjects -and $filterProjects -ne '[]') {
-            Write-Host "?? Incremental Test Mode"
+            Write-Host "⚡ Incremental Test Mode"
             Write-Host "Testing specific projects only..."
             Write-Host ""
             
             $projects = $filterProjects | ConvertFrom-Json
             
-            # Filter to only test projects
-            $testProjects = $projects | Where-Object { $_ -like "*/tests/*" -or $_ -like "*.Tests.csproj" }
-            
-            if ($testProjects.Count -eq 0) {
-              Write-Host "??  No test projects in changed set. Skipping tests."
+            if ($projects.Count -eq 0) {
+              Write-Host "ℹ️ No test projects in changed set. Skipping tests."
               exit 0
             }
             
-            foreach ($project in $testProjects) {
-              Write-Host "Testing: $project"
+            Write-Host "🧪 Running tests for $($projects.Count) project(s)"
+            Write-Host ""
+            
+            foreach ($project in $projects) {
+              Write-Host "▶️ Testing: $project"
               dotnet test "$project" `
                 --configuration ${{ inputs.build-config }} `
                 --no-build `
@@ -78,7 +78,7 @@ jobs:
               }
             }
           } else {
-            Write-Host "?? Full Test Mode"
+            Write-Host "🚀 Full Test Mode"
             Write-Host "Testing entire solution..."
             dotnet test `
               --configuration ${{ inputs.build-config }} `
