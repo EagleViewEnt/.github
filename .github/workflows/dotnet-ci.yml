@@ -129,8 +129,9 @@ jobs:
     with:
       dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
       build-config: ${{ needs.setup.outputs.build-config }}
-      # Use changed projects if incremental AND detect-changes succeeded with changes
-      filter-projects: ${{ (needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.has-changes == 'true' && needs.detect-changes.outputs.changed-projects) || '[]' }}
+      # FIXED: Use the value directly when all conditions pass, or fall back to empty
+      # The key is: ONLY pass the array when incremental mode succeeded with actual changes
+      filter-projects: ${{ needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.has-changes == 'true' && needs.detect-changes.outputs.changed-projects != '[]' && needs.detect-changes.outputs.changed-projects || '[]' }}
 
   test:
     needs: [setup, build, detect-mode, detect-changes]
@@ -140,8 +141,8 @@ jobs:
       dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
       build-config: ${{ needs.setup.outputs.build-config }}
       code-coverage: ${{ needs.setup.outputs.code-coverage }}
-      # Use changed projects if incremental AND detect-changes succeeded with changes
-      filter-projects: ${{ (needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.has-changes == 'true' && needs.detect-changes.outputs.changed-projects) || '[]' }}
+      # FIXED: Same logic as build - check for non-empty array
+      filter-projects: ${{ needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.has-changes == 'true' && needs.detect-changes.outputs.changed-projects != '[]' && needs.detect-changes.outputs.changed-projects || '[]' }}
 
   package:
     needs: [setup, build, test, detect-mode, detect-changes]
@@ -151,9 +152,8 @@ jobs:
     with:
       dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
       build-config: ${{ needs.setup.outputs.build-config }}
-      # CRITICAL FIX: Only use changed projects if we have actual changes AND they were detected
-      # Otherwise use ALL packable projects (full build scenario)
-      packable-projects: ${{ (needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.has-changes == 'true' && needs.detect-changes.outputs.changed-src-projects != '[]' && needs.detect-changes.outputs.changed-src-projects) || needs.setup.outputs.packable-projects }}
+      # FIXED: For packaging, check changed-src-projects instead
+      packable-projects: ${{ needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.has-changes == 'true' && needs.detect-changes.outputs.changed-src-projects != '[]' && needs.detect-changes.outputs.changed-src-projects || needs.setup.outputs.packable-projects }}
       org-name: ${{ needs.setup.outputs.org-name }}
 
   summary:
@@ -172,4 +172,4 @@ jobs:
       # Pass build mode information
       incremental-build: ${{ needs.detect-mode.outputs.incremental }}
       incremental-reason: ${{ needs.detect-mode.outputs.reason }}
-      changed-projects: ${{ (needs.detect-changes.result == 'success' && needs.detect-changes.outputs.changed-projects) || '[]' }}
+      changed-projects: ${{ (needs.detect-changes.result == 'success') && needs.detect-changes.outputs.changed-projects || '[]' }}
