@@ -123,7 +123,7 @@ jobs:
             $ext = [System.IO.Path]::GetExtension($file).ToLower()
             $fileName = [System.IO.Path]::GetFileName($file)
             $shouldIgnore = $false
-            
+
             # Check ignore patterns
             foreach ($pattern in $ignorePatterns) {
               if ($pattern.Contains('*')) {
@@ -139,4 +139,120 @@ jobs:
               }
             }
             
-   
+            if ($shouldIgnore) {
+              $ignoredFiles += $file
+              Write-Host "[IGNORE] $file"
+            } elseif ($codeExtensions -contains $ext) {
+              $codeFiles += $file
+              Write-Host "[MATCH] $file"
+            } else {
+              $ignoredFiles += $file
+              Write-Host "[IGNORE] $file (extension not in code list)"
+            }
+          }
+          
+          Write-Host ""
+          Write-Host "[RESULT] Code files: $($codeFiles.Count)"
+          Write-Host "[RESULT] Ignored files: $($ignoredFiles.Count)"
+          Write-Host ""
+          
+          if ($codeFiles.Count -eq 0) {
+            Write-Host "[SKIP] No code files changed (only docs/images/etc.)"
+            echo "changed-projects=[]" >> $env:GITHUB_OUTPUT
+            echo "has-changes=false" >> $env:GITHUB_OUTPUT
+            echo "changed-src-projects=[]" >> $env:GITHUB_OUTPUT
+            echo "changed-test-projects=[]" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+          
+          # Find all .csproj files in the repository
+          Write-Host "[SCAN] Finding all projects..."
+          $allProjects = Get-ChildItem -Path . -Recurse -Filter "*.csproj" | ForEach-Object {
+            $_.FullName.Replace($PWD.Path + '\', '').Replace('\', '/')
+          }
+          Write-Host "[INFO] Total projects found: $($allProjects.Count)"
+          
+          # Map changed files to their projects
+          Write-Host ""
+          Write-Host "[MAP] Mapping changed files to projects..."
+          $affectedProjects = @()
+          
+          foreach ($file in $codeFiles) {
+            $fileDir = [System.IO.Path]::GetDirectoryName($file).Replace('\', '/')
+            
+            # Find the closest project file
+            $segments = $fileDir.Split('/')
+            for ($i = $segments.Count; $i -ge 0; $i--) {
+              $searchPath = ($segments[0..$i] -join '/') + '/*.csproj'
+              $projectFile = $allProjects | Where-Object { $_ -like $searchPath } | Select-Object -First 1
+              
+              if ($projectFile) {
+                if ($affectedProjects -notcontains $projectFile) {
+                  $affectedProjects += $projectFile
+                  Write-Host "[PROJECT] $file -> $projectFile"
+                }
+                break
+              }
+            }
+          }
+          
+          Write-Host ""
+          Write-Host "[RESULT] Affected projects: $($affectedProjects.Count)"
+          
+          if ($affectedProjects.Count -eq 0) {
+            Write-Host "[SKIP] No projects affected by changes"
+            echo "changed-projects=[]" >> $env:GITHUB_OUTPUT
+            echo "has-changes=false" >> $env:GITHUB_OUTPUT
+            echo "changed-src-projects=[]" >> $env:GITHUB_OUTPUT
+            echo "changed-test-projects=[]" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+          
+          # Categorize projects into source and test projects
+          $srcProjects = @()
+          $testProjects = @()
+          
+          foreach ($project in $affectedProjects) {
+            if ($project -match '[\\/]tests[\\/]' -or $project -match '\.Tests[\\/]' -or $project -match '\.Tests\.csproj$') {
+              $testProjects += $project
+              Write-Host "[TEST] $project"
+            } else {
+              $srcProjects += $project
+              Write-Host "[SRC] $project"
+            }
+          }
+          
+          Write-Host ""
+          Write-Host "[RESULT] Source projects: $($srcProjects.Count)"
+          Write-Host "[RESULT] Test projects: $($testProjects.Count)"
+          Write-Host ""
+          
+          # Convert to JSON arrays
+          $changedProjectsJson = $affectedProjects | ConvertTo-Json -Compress
+          $srcProjectsJson = $srcProjects | ConvertTo-Json -Compress
+          $testProjectsJson = $testProjects | ConvertTo-Json -Compress
+          
+          # Handle single-item arrays (ConvertTo-Json doesn't wrap single items in array brackets)
+          if ($affectedProjects.Count -eq 1) { $changedProjectsJson = "[$changedProjectsJson]" }
+          if ($srcProjects.Count -eq 1) { $srcProjectsJson = "[$srcProjectsJson]" }
+          if ($testProjects.Count -eq 1) { $testProjectsJson = "[$testProjectsJson]" }
+          
+          # Handle empty arrays
+          if ($affectedProjects.Count -eq 0) { $changedProjectsJson = "[]" }
+          if ($srcProjects.Count -eq 0) { $srcProjectsJson = "[]" }
+          if ($testProjects.Count -eq 0) { $testProjectsJson = "[]" }
+          
+          # Output results
+          Write-Host "================================================"
+          Write-Host "   OUTPUT"
+          Write-Host "================================================"
+          Write-Host "changed-projects: $changedProjectsJson"
+          Write-Host "has-changes: true"
+          Write-Host "changed-src-projects: $srcProjectsJson"
+          Write-Host "changed-test-projects: $testProjectsJson"
+          Write-Host "================================================"
+          
+          echo "changed-projects=$changedProjectsJson" >> $env:GITHUB_OUTPUT
+          echo "has-changes=true" >> $env:GITHUB_OUTPUT
+          echo "changed-src-projects=$srcProjectsJson" >> $env:GITHUB_OUTPUT
+          echo "changed-test-projects=$testProjectsJson" >> $env:GITHUB_OUTPUT
