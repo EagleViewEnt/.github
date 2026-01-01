@@ -16,6 +16,11 @@ on:
         required: false
         type: string
         default: 'false'
+      filter-projects:
+        description: 'JSON array of specific projects to test (empty = test all)'
+        required: false
+        type: string
+        default: '[]'
 
 jobs:
   test:
@@ -40,7 +45,47 @@ jobs:
         run: dotnet build --no-restore --configuration ${{ inputs.build-config }}
       
       - name: Run tests
-        run: dotnet test --configuration ${{ inputs.build-config }} --no-build --verbosity normal --collect:"XPlat Code Coverage"
+        shell: pwsh
+        run: |
+          $filterProjects = '${{ inputs.filter-projects }}'
+          
+          if ($filterProjects -and $filterProjects -ne '[]') {
+            Write-Host "?? Incremental Test Mode"
+            Write-Host "Testing specific projects only..."
+            Write-Host ""
+            
+            $projects = $filterProjects | ConvertFrom-Json
+            
+            # Filter to only test projects
+            $testProjects = $projects | Where-Object { $_ -like "*/tests/*" -or $_ -like "*.Tests.csproj" }
+            
+            if ($testProjects.Count -eq 0) {
+              Write-Host "??  No test projects in changed set. Skipping tests."
+              exit 0
+            }
+            
+            foreach ($project in $testProjects) {
+              Write-Host "Testing: $project"
+              dotnet test "$project" `
+                --configuration ${{ inputs.build-config }} `
+                --no-build `
+                --verbosity normal `
+                --collect:"XPlat Code Coverage"
+              
+              if ($LASTEXITCODE -ne 0) {
+                Write-Error "Tests failed for: $project"
+                exit $LASTEXITCODE
+              }
+            }
+          } else {
+            Write-Host "?? Full Test Mode"
+            Write-Host "Testing entire solution..."
+            dotnet test `
+              --configuration ${{ inputs.build-config }} `
+              --no-build `
+              --verbosity normal `
+              --collect:"XPlat Code Coverage"
+          }
       
       - name: Upload coverage reports
         if: inputs.code-coverage == 'true'
