@@ -100,9 +100,9 @@ jobs:
                   echo "- ``$proj``" >> $env:GITHUB_STEP_SUMMARY
                 }
               } else {
-                echo "### :warning: No project changes detected" >> $env:GITHUB_STEP_SUMMARY
+                echo "### :information_source: No project changes detected" >> $env:GITHUB_STEP_SUMMARY
                 echo "" >> $env:GITHUB_STEP_SUMMARY
-                echo "Falling back to full build mode." >> $env:GITHUB_STEP_SUMMARY
+                echo "No code changes found in this push." >> $env:GITHUB_STEP_SUMMARY
               }
             } catch {
               echo "### :file_folder: Changed Projects" >> $env:GITHUB_STEP_SUMMARY
