@@ -262,6 +262,12 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration ${{ needs.setup.outputs.build-config }}
       
       - name: Run tests
         run: dotnet test --configuration ${{ needs.setup.outputs.build-config }} --no-build --verbosity normal
