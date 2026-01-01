@@ -129,8 +129,8 @@ jobs:
     with:
       dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
       build-config: ${{ needs.setup.outputs.build-config }}
-      # Use changed projects if incremental AND detect-changes succeeded, otherwise empty (full build)
-      filter-projects: ${{ (needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.changed-projects) || '[]' }}
+      # Use changed projects if incremental AND detect-changes succeeded with changes
+      filter-projects: ${{ (needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.has-changes == 'true' && needs.detect-changes.outputs.changed-projects) || '[]' }}
 
   test:
     needs: [setup, build, detect-mode, detect-changes]
@@ -140,21 +140,20 @@ jobs:
       dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
       build-config: ${{ needs.setup.outputs.build-config }}
       code-coverage: ${{ needs.setup.outputs.code-coverage }}
-      # Use changed projects if incremental AND detect-changes succeeded, otherwise empty (full test)
-      filter-projects: ${{ (needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.changed-projects) || '[]' }}
+      # Use changed projects if incremental AND detect-changes succeeded with changes
+      filter-projects: ${{ (needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.has-changes == 'true' && needs.detect-changes.outputs.changed-projects) || '[]' }}
 
   package:
     needs: [setup, build, test, detect-mode, detect-changes]
-    # Package if: publish enabled AND build succeeded AND (changes detected OR full build)
     if: always() && needs.setup.outputs.publish-packages == 'true' && needs.build.result == 'success'
     uses: ./.github/workflows/_package.yml
     secrets: inherit
     with:
       dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
       build-config: ${{ needs.setup.outputs.build-config }}
-      # FIXED: Package changed source projects if incremental with changes, otherwise ALL packable projects
-      # This ensures packages are always created when <IsPackable>true</IsPackable> and changes exist
-      packable-projects: ${{ (needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.has-changes == 'true' && needs.detect-changes.outputs.changed-src-projects) || needs.setup.outputs.packable-projects }}
+      # CRITICAL FIX: Only use changed projects if we have actual changes AND they were detected
+      # Otherwise use ALL packable projects (full build scenario)
+      packable-projects: ${{ (needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.has-changes == 'true' && needs.detect-changes.outputs.changed-src-projects != '[]' && needs.detect-changes.outputs.changed-src-projects) || needs.setup.outputs.packable-projects }}
       org-name: ${{ needs.setup.outputs.org-name }}
 
   summary:
@@ -173,5 +172,4 @@ jobs:
       # Pass build mode information
       incremental-build: ${{ needs.detect-mode.outputs.incremental }}
       incremental-reason: ${{ needs.detect-mode.outputs.reason }}
-      # Use changed projects if detect-changes succeeded, otherwise empty array
       changed-projects: ${{ (needs.detect-changes.result == 'success' && needs.detect-changes.outputs.changed-projects) || '[]' }}
