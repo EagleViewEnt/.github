@@ -76,6 +76,7 @@ jobs:
     needs: [setup, build, test]
     if: needs.setup.outputs.publish-packages == 'true'
     uses: ./.github/workflows/_package.yml
+    secrets: inherit  # Pass secrets to package job
     with:
       dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
       build-config: ${{ needs.setup.outputs.build-config }}
