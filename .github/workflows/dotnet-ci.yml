@@ -44,7 +44,73 @@ on:
         type: string
 
 jobs:
+  # Auto-detect build mode from commit message or ref
+  detect-mode:
+    name: Detect Build Mode
+    runs-on: windows-latest
+    outputs:
+      incremental: ${{ steps.mode.outputs.incremental }}
+      reason: ${{ steps.mode.outputs.reason }}
+    steps:
+      - name: Determine build mode
+        id: mode
+        shell: pwsh
+        run: |
+          $commitMsg = "${{ github.event.head_commit.message }}"
+          $ref = "${{ github.ref }}"
+          $eventName = "${{ github.event_name }}"
+          
+          Write-Host "=============================================="
+          Write-Host "   Build Mode Auto-Detection"
+          Write-Host "=============================================="
+          Write-Host "Event: $eventName"
+          Write-Host "Ref: $ref"
+          Write-Host "Commit Message: $commitMsg"
+          Write-Host ""
+          
+          # Check for full build triggers
+          $fullBuild = $false
+          $reason = ""
+          
+          if ($commitMsg -match '\[Release\]' -or $commitMsg -match '\[FullBuild\]') {
+            $fullBuild = $true
+            $reason = "Commit message contains [Release] or [FullBuild]"
+          } elseif ($ref -match '^refs/tags/v') {
+            $fullBuild = $true
+            $reason = "Version tag push (refs/tags/v*)"
+          } elseif ($ref -match '^refs/tags/.*-v') {
+            $fullBuild = $true
+            $reason = "Project version tag push (*-v*)"
+          } elseif ($ref -match 'release/') {
+            $fullBuild = $true
+            $reason = "Release branch push"
+          }
+          
+          if ($fullBuild) {
+            Write-Host "???  FULL BUILD MODE"
+            Write-Host "Reason: $reason"
+            echo "incremental=false" >> $env:GITHUB_OUTPUT
+            echo "reason=$reason" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Host "? INCREMENTAL BUILD MODE (default)"
+            Write-Host "Reason: Normal development - build only changed projects"
+            echo "incremental=true" >> $env:GITHUB_OUTPUT
+            echo "reason=Auto-incremental (default for normal development)" >> $env:GITHUB_OUTPUT
+          }
+          
+          Write-Host "=============================================="
+
+  # Detect changed projects (only if incremental mode)
+  detect-changes:
+    needs: detect-mode
+    if: needs.detect-mode.outputs.incremental == 'true'
+    uses: ./.github/workflows/_detect-changes.yml
+    with:
+      base-ref: 'main'
+
   setup:
+    needs: [detect-mode, detect-changes]
+    if: always() && needs.detect-mode.result == 'success'
     uses: ./.github/workflows/_setup-and-discovery.yml
     with:
       config-file: ${{ inputs.config-file }}
@@ -57,34 +123,40 @@ jobs:
       org-name: ${{ inputs.org-name }}
 
   build:
-    needs: setup
+    needs: [setup, detect-mode, detect-changes]
+    if: always() && needs.setup.result == 'success'
     uses: ./.github/workflows/_build.yml
     with:
       dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
       build-config: ${{ needs.setup.outputs.build-config }}
+      # Use changed projects if incremental, empty array for full build
+      filter-projects: ${{ needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.outputs.changed-projects || '[]' }}
 
   test:
-    needs: [setup, build]
-    if: needs.setup.outputs.run-tests == 'true'
+    needs: [setup, build, detect-mode, detect-changes]
+    if: always() && needs.setup.outputs.run-tests == 'true' && needs.build.result == 'success'
     uses: ./.github/workflows/_test.yml
     with:
       dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
       build-config: ${{ needs.setup.outputs.build-config }}
       code-coverage: ${{ needs.setup.outputs.code-coverage }}
+      # Use changed projects if incremental, empty array for full test
+      filter-projects: ${{ needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.outputs.changed-projects || '[]' }}
 
   package:
-    needs: [setup, build, test]
-    if: needs.setup.outputs.publish-packages == 'true'
+    needs: [setup, build, test, detect-mode, detect-changes]
+    if: always() && needs.setup.outputs.publish-packages == 'true' && needs.build.result == 'success'
     uses: ./.github/workflows/_package.yml
-    secrets: inherit  # Pass secrets to package job
+    secrets: inherit
     with:
       dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
       build-config: ${{ needs.setup.outputs.build-config }}
-      packable-projects: ${{ needs.setup.outputs.packable-projects }}
+      # Use changed source projects if incremental, all projects if full
+      packable-projects: ${{ needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.outputs.changed-src-projects || needs.setup.outputs.packable-projects }}
       org-name: ${{ needs.setup.outputs.org-name }}
 
   summary:
-    needs: [setup, build, test, package]
+    needs: [setup, build, test, package, detect-mode, detect-changes]
     if: always()
     uses: ./.github/workflows/_summary.yml
     with:
@@ -96,3 +168,7 @@ jobs:
       build-result: ${{ needs.build.result }}
       test-result: ${{ needs.test.result }}
       package-result: ${{ needs.package.result }}
+      # Pass build mode information
+      incremental-build: ${{ needs.detect-mode.outputs.incremental }}
+      incremental-reason: ${{ needs.detect-mode.outputs.reason }}
+      changed-projects: ${{ needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.outputs.changed-projects || '[]' }}

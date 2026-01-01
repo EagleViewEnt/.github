@@ -1,0 +1,166 @@
+name: Detect Changes
+
+on:
+  workflow_call:
+    inputs:
+      base-ref:
+        description: 'Base reference for comparison (e.g., main)'
+        required: false
+        type: string
+        default: 'main'
+    outputs:
+      changed-projects:
+        description: 'JSON array of changed project paths'
+        value: ${{ jobs.detect.outputs.changed-projects }}
+      has-changes:
+        description: 'Whether any projects have changes'
+        value: ${{ jobs.detect.outputs.has-changes }}
+      changed-src-projects:
+        description: 'JSON array of changed source projects only'
+        value: ${{ jobs.detect.outputs.changed-src-projects }}
+      changed-test-projects:
+        description: 'JSON array of changed test projects only'
+        value: ${{ jobs.detect.outputs.changed-test-projects }}
+
+jobs:
+  detect:
+    name: Detect Changed Projects
+    runs-on: windows-latest  # Use Windows for consistency
+    outputs:
+      changed-projects: ${{ steps.detect.outputs.changed-projects }}
+      has-changes: ${{ steps.detect.outputs.has-changes }}
+      changed-src-projects: ${{ steps.detect.outputs.changed-src-projects }}
+      changed-test-projects: ${{ steps.detect.outputs.changed-test-projects }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for comparison
+      
+      - name: Detect changed projects
+        id: detect
+        shell: pwsh
+        run: |
+          Write-Host "================================================"
+          Write-Host "   Detecting Changed Projects"
+          Write-Host "================================================"
+          Write-Host ""
+          
+          # Determine base reference
+          $baseRef = "${{ inputs.base-ref }}"
+          if ($env:GITHUB_EVENT_NAME -eq "pull_request") {
+            $baseRef = "${{ github.event.pull_request.base.sha }}"
+            Write-Host "Pull Request Mode: Comparing to $baseRef"
+          } else {
+            Write-Host "Push Mode: Comparing to origin/$baseRef"
+            $baseRef = "origin/$baseRef"
+          }
+          
+          # Get changed files
+          Write-Host ""
+          Write-Host "Getting changed files..."
+          $changedFiles = git diff --name-only $baseRef HEAD
+          
+          if (-not $changedFiles) {
+            Write-Host "??  No changed files detected"
+            echo "changed-projects=[]" >> $env:GITHUB_OUTPUT
+            echo "has-changes=false" >> $env:GITHUB_OUTPUT
+            echo "changed-src-projects=[]" >> $env:GITHUB_OUTPUT
+            echo "changed-test-projects=[]" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+          
+          Write-Host "Changed files: $($changedFiles.Count)"
+          Write-Host ""
+          
+          # Find all project files
+          $allProjects = Get-ChildItem -Path . -Filter "*.csproj" -Recurse | ForEach-Object {
+            @{
+              Path = $_.FullName.Replace("$PWD\", "").Replace("$PWD/", "").Replace("\", "/")
+              Directory = $_.Directory.FullName.Replace("$PWD\", "").Replace("$PWD/", "").Replace("\", "/")
+            }
+          }
+          
+          # Map changed files to projects
+          $changedProjects = @()
+          $changedSrcProjects = @()
+          $changedTestProjects = @()
+          
+          foreach ($file in $changedFiles) {
+            $file = $file.Replace("\", "/")
+            
+            # Find which project this file belongs to
+            foreach ($project in $allProjects) {
+              if ($file.StartsWith($project.Directory)) {
+                $projectPath = $project.Path
+                
+                # Add to changed projects if not already there
+                if ($changedProjects -notcontains $projectPath) {
+                  $changedProjects += $projectPath
+                  Write-Host "? Found: $projectPath"
+                  
+                  # Categorize by type
+                  if ($projectPath -like "*/tests/*" -or $projectPath -like "*.Tests.csproj") {
+                    $changedTestProjects += $projectPath
+                  } else {
+                    $changedSrcProjects += $projectPath
+                  }
+                }
+                break
+              }
+            }
+          }
+          
+          # Also include test projects for changed source projects
+          Write-Host ""
+          Write-Host "Checking for related test projects..."
+          foreach ($srcProject in $changedSrcProjects) {
+            # Extract project name from path (e.g., "EagleViewEnt.Utilities.Core")
+            $projectName = [System.IO.Path]::GetFileNameWithoutExtension($srcProject)
+            
+            # Look for corresponding test project
+            $testProjectPattern = "*$projectName.Tests.csproj"
+            $testProject = $allProjects | Where-Object { 
+              $_.Path -like $testProjectPattern -and ($_.Path -like "*/tests/*" -or $_.Path -like "*.Tests.csproj")
+            } | Select-Object -First 1
+            
+            if ($testProject -and $changedProjects -notcontains $testProject.Path) {
+              $changedProjects += $testProject.Path
+              $changedTestProjects += $testProject.Path
+              Write-Host "? Added test project: $($testProject.Path)"
+            }
+          }
+          
+          Write-Host ""
+          Write-Host "================================================"
+          Write-Host "   Detection Results"
+          Write-Host "================================================"
+          Write-Host "Total changed projects: $($changedProjects.Count)"
+          Write-Host "  Source projects: $($changedSrcProjects.Count)"
+          Write-Host "  Test projects: $($changedTestProjects.Count)"
+          Write-Host ""
+          
+          # Convert to JSON
+          $changedProjectsJson = $changedProjects | ConvertTo-Json -Compress
+          $changedSrcProjectsJson = $changedSrcProjects | ConvertTo-Json -Compress
+          $changedTestProjectsJson = $changedTestProjects | ConvertTo-Json -Compress
+          
+          if ($null -eq $changedProjectsJson -or $changedProjectsJson -eq "null") { 
+            $changedProjectsJson = "[]" 
+          }
+          if ($null -eq $changedSrcProjectsJson -or $changedSrcProjectsJson -eq "null") {
+            $changedSrcProjectsJson = "[]"
+          }
+          if ($null -eq $changedTestProjectsJson -or $changedTestProjectsJson -eq "null") {
+            $changedTestProjectsJson = "[]"
+          }
+          
+          # Output results
+          echo "changed-projects=$changedProjectsJson" >> $env:GITHUB_OUTPUT
+          echo "changed-src-projects=$changedSrcProjectsJson" >> $env:GITHUB_OUTPUT
+          echo "changed-test-projects=$changedTestProjectsJson" >> $env:GITHUB_OUTPUT
+          echo "has-changes=true" >> $env:GITHUB_OUTPUT
+          
+          Write-Host "Detection complete!"
+          Write-Host "================================================"

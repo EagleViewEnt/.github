@@ -35,11 +35,26 @@ on:
         description: 'Package job result'
         required: true
         type: string
+      incremental-build:
+        description: 'Whether incremental build was used'
+        required: false
+        type: string
+        default: 'false'
+      incremental-reason:
+        description: 'Reason for build mode selection'
+        required: false
+        type: string
+        default: ''
+      changed-projects:
+        description: 'JSON array of changed projects'
+        required: false
+        type: string
+        default: '[]'
 
 jobs:
   summary:
     name: Workflow Summary
-    runs-on: ubuntu-latest
+    runs-on: windows-latest  # Use Windows for consistency
     if: always()
     
     steps:
@@ -51,14 +66,53 @@ jobs:
           ${{ inputs.packable-projects }}
           '@
           
+          $changedProjectsJson = @'
+          ${{ inputs.changed-projects }}
+          '@
+          
           echo "## ?? Workflow Summary" >> $env:GITHUB_STEP_SUMMARY
           echo "" >> $env:GITHUB_STEP_SUMMARY
           echo "**Mode:** ${{ inputs.mode }}" >> $env:GITHUB_STEP_SUMMARY
           echo "**Configuration:** ${{ inputs.build-config }}" >> $env:GITHUB_STEP_SUMMARY
           echo "**.NET Version:** ${{ inputs.dotnet-version }}" >> $env:GITHUB_STEP_SUMMARY
+          
+          # Show build type and reason
+          if ("${{ inputs.incremental-build }}" -eq "true") {
+            echo "**Build Type:** ? Incremental (changed projects only)" >> $env:GITHUB_STEP_SUMMARY
+          } else {
+            echo "**Build Type:** ??? Full (all projects)" >> $env:GITHUB_STEP_SUMMARY
+          }
+          
+          if ("${{ inputs.incremental-reason }}" -ne "") {
+            echo "**Reason:** ${{ inputs.incremental-reason }}" >> $env:GITHUB_STEP_SUMMARY
+          }
+          
           echo "" >> $env:GITHUB_STEP_SUMMARY
           
-          # Safely parse JSON with error handling
+          # Show changed projects if incremental
+          if ("${{ inputs.incremental-build }}" -eq "true") {
+            try {
+              if (-not [string]::IsNullOrWhiteSpace($changedProjectsJson) -and $changedProjectsJson -ne "[]") {
+                $projects = $changedProjectsJson | ConvertFrom-Json
+                echo "### ? Changed Projects ($($projects.Count))" >> $env:GITHUB_STEP_SUMMARY
+                echo "" >> $env:GITHUB_STEP_SUMMARY
+                foreach ($proj in $projects) {
+                  echo "- ``$proj``" >> $env:GITHUB_STEP_SUMMARY
+                }
+              } else {
+                echo "### ?? No project changes detected" >> $env:GITHUB_STEP_SUMMARY
+                echo "" >> $env:GITHUB_STEP_SUMMARY
+                echo "Falling back to full build mode." >> $env:GITHUB_STEP_SUMMARY
+              }
+            } catch {
+              echo "### ? Changed Projects" >> $env:GITHUB_STEP_SUMMARY
+              echo "" >> $env:GITHUB_STEP_SUMMARY
+              echo "_(Error parsing project list)_" >> $env:GITHUB_STEP_SUMMARY
+            }
+            echo "" >> $env:GITHUB_STEP_SUMMARY
+          }
+          
+          # Safely parse packable projects JSON
           try {
             if (-not [string]::IsNullOrWhiteSpace($packableProjectsJson) -and $packableProjectsJson -ne "[]") {
               $projects = $packableProjectsJson | ConvertFrom-Json
