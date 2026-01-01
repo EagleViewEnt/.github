@@ -14,22 +14,22 @@ This repository contains shared workflows, actions, and templates used across al
 ```
 .github/
 ├── workflows/
-│   └── reusable-dotnet-ci.yml      # Main reusable .NET CI/CD workflow
-└── actions/
-    └── setup-github-packages-auth/ # GitHub Packages authentication
-        ├── action.yml
-        └── README.md
-workflow-templates/
-├── dotnet-ci.yml                    # .NET CI starter template
-└── dotnet-ci.properties.json        # Template metadata
-docs/
-├── SHARED_WORKFLOWS.md              # Complete usage guide
-├── CENTRALIZED_CICD.md              # Overview and benefits
-├── WORKFLOW_CONFIG.md               # Configuration reference
-├── PACKAGE_ACCESS.md                # Package visibility management
-└── MIGRATION_GUIDE.md               # Migration instructions
-scripts/
-└── Configure-PackageAccess.ps1      # Manual package access config
+│   ├── dotnet-ci.yml      # Main reusable .NET CI/CD workflow
+│   ├── _detect-changes.yml      # Determines if there are code changes
+│   ├── _setup-and-discovery.yml      # Discovers projects and sets up environment
+│   ├── _build.yml      # Builds the project(s)
+│   ├── _test.yml      # Tests the project(s)
+│   ├── _package.yml      # Packages the project(s)
+│   └── _summary.yml      # Summarizes the workflow results
+│
+├── docs/
+│   ├── SHARED_WORKFLOWS.md              # Complete usage guide
+│   ├── CENTRALIZED_CICD.md              # Overview and benefits
+│   ├── WORKFLOW_CONFIG.md               # Configuration reference
+│   ├── PACKAGE_ACCESS.md                # Package visibility management
+│   └── MIGRATION_GUIDE.md               # Migration instructions
+│
+└── scripts/
 ```
 
 ## :rocket: Quick Start
@@ -110,6 +110,7 @@ Complete CI/CD pipeline for .NET projects:
 | `publish-packages` | boolean | `true` | Publish NuGet packages |
 | `package-projects` | string | `[]` | Projects to pack (JSON array) |
 | `org-name` | string | `EagleViewEnt` | GitHub organization |
+
 
 ## :lock: Authentication
 
