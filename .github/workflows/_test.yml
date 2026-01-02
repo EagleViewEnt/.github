@@ -1,4 +1,4 @@
-﻿name: Test
+name: Test
 
 on:
   workflow_call:
@@ -37,6 +37,12 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ inputs.dotnet-version }}
+      
+      - name: Authenticate to GitHub Packages
+        uses: EagleViewEnt/.github/.github/actions/authenticate-github-packages@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          org-name: 'EagleViewEnt'
       
       - name: Restore dependencies
         run: dotnet restore
