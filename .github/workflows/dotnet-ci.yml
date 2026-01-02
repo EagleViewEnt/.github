@@ -127,6 +127,7 @@ jobs:
     needs: [setup, detect-mode, detect-changes]
     if: always() && needs.setup.result == 'success'
     uses: ./.github/workflows/_build.yml
+    secrets: inherit
     with:
       dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
       build-config: ${{ needs.setup.outputs.build-config }}
@@ -138,6 +139,7 @@ jobs:
     needs: [setup, build, detect-mode, detect-changes]
     if: always() && needs.setup.outputs.run-tests == 'true' && needs.build.result == 'success'
     uses: ./.github/workflows/_test.yml
+    secrets: inherit
     with:
       dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
       build-config: ${{ needs.setup.outputs.build-config }}
