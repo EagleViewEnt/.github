@@ -1,0 +1,70 @@
+﻿name: Build
+
+on:
+  workflow_call:
+    inputs:
+      dotnet-version:
+        description: '.NET SDK version'
+        required: true
+        type: string
+      build-config:
+        description: 'Build configuration (Debug/Release)'
+        required: true
+        type: string
+      filter-projects:
+        description: 'JSON array of specific projects to build (empty = build all)'
+        required: false
+        type: string
+        default: '[]'
+
+jobs:
+  build:
+    name: Build Solution
+    runs-on: windows-latest  # Match the old workflow
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+      
+      - name: Authenticate to GitHub Packages
+        uses: EagleViewEnt/.github/.github/actions/authenticate-github-packages@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          org-name: 'EagleViewEnt'
+      
+      - name: Restore dependencies
+        run: dotnet restore
+      
+      - name: Build
+        shell: pwsh
+        run: |
+          $filterProjects = '${{ inputs.filter-projects }}'
+          
+          if ($filterProjects -and $filterProjects -ne '[]') {
+            Write-Host "⚡ Incremental Build Mode"
+            Write-Host "Building specific projects only..."
+            Write-Host ""
+            
+            $projects = $filterProjects | ConvertFrom-Json
+            
+            foreach ($project in $projects) {
+              Write-Host "🔨 Building: $project"
+              dotnet build "$project" --no-restore --configuration ${{ inputs.build-config }}
+              
+              if ($LASTEXITCODE -ne 0) {
+                Write-Error "Build failed for: $project"
+                exit $LASTEXITCODE
+              }
+            }
+          } else {
+            Write-Host "🚀 Full Build Mode"
+            Write-Host "Building entire solution..."
+            dotnet build --no-restore --configuration ${{ inputs.build-config }}
+          }

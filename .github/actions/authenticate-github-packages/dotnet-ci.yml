@@ -1,0 +1,176 @@
+name: .NET CI/CD
+
+on:
+  workflow_call:
+    inputs:
+      # Config-based mode
+      config-file:
+        description: 'Path to workflow-config.json'
+        required: false
+        type: string
+      
+      # Legacy mode inputs (backward compatibility)
+      dotnet-version:
+        description: 'Legacy: .NET SDK version'
+        required: false
+        type: string
+      build-configuration:
+        description: 'Legacy: Build configuration'
+        required: false
+        type: string
+        default: 'Release'
+      run-tests:
+        description: 'Legacy: Whether to run tests'
+        required: false
+        type: boolean
+        default: true
+      enable-code-coverage:
+        description: 'Legacy: Whether to enable code coverage'
+        required: false
+        type: boolean
+        default: false
+      publish-packages:
+        description: 'Legacy: Whether to publish packages'
+        required: false
+        type: boolean
+        default: false
+      package-projects:
+        description: 'Legacy: JSON array of project paths'
+        required: false
+        type: string
+      org-name:
+        description: 'Legacy: Organization name'
+        required: false
+        type: string
+
+jobs:
+  # Auto-detect build mode from commit message or ref
+  detect-mode:
+    name: Detect Build Mode
+    runs-on: windows-latest
+    outputs:
+      incremental: ${{ steps.mode.outputs.incremental }}
+      reason: ${{ steps.mode.outputs.reason }}
+    steps:
+      - name: Determine build mode
+        id: mode
+        shell: pwsh
+        run: |
+          $commitMsg = "${{ github.event.head_commit.message }}"
+          $ref = "${{ github.ref }}"
+          $eventName = "${{ github.event_name }}"
+          
+          Write-Host "=============================================="
+          Write-Host "   Build Mode Auto-Detection"
+          Write-Host "=============================================="
+          Write-Host "Event: $eventName"
+          Write-Host "Ref: $ref"
+          Write-Host "Commit Message: $commitMsg"
+          Write-Host ""
+          
+          # Check for full build triggers
+          $fullBuild = $false
+          $reason = ""
+          
+          if ($commitMsg -match '\[Release\]' -or $commitMsg -match '\[FullBuild\]') {
+            $fullBuild = $true
+            $reason = "Commit message contains [Release] or [FullBuild]"
+          } elseif ($ref -match '^refs/tags/v') {
+            $fullBuild = $true
+            $reason = "Version tag push (refs/tags/v*)"
+          } elseif ($ref -match '^refs/tags/.*-v') {
+            $fullBuild = $true
+            $reason = "Project version tag push (*-v*)"
+          } elseif ($ref -match 'release/') {
+            $fullBuild = $true
+            $reason = "Release branch push"
+          }
+          
+          if ($fullBuild) {
+            Write-Host "[FULL BUILD] Full build mode enabled"
+            Write-Host "Reason: $reason"
+            echo "incremental=false" >> $env:GITHUB_OUTPUT
+            echo "reason=$reason" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Host "[INCREMENTAL] Incremental build mode (default)"
+            Write-Host "Reason: Normal development - build only changed projects"
+            echo "incremental=true" >> $env:GITHUB_OUTPUT
+            echo "reason=Auto-incremental (default for normal development)" >> $env:GITHUB_OUTPUT
+          }
+          
+          Write-Host "=============================================="
+
+  # Detect changed projects (only if incremental mode)
+  detect-changes:
+    needs: detect-mode
+    if: needs.detect-mode.outputs.incremental == 'true'
+    uses: ./.github/workflows/_detect-changes.yml
+    with:
+      base-ref: 'main'
+
+  setup:
+    needs: [detect-mode, detect-changes]
+    # FIXED: Only run if we're in full build mode OR if incremental detected actual code changes
+    if: always() && needs.detect-mode.result == 'success' && (needs.detect-mode.outputs.incremental == 'false' || needs.detect-changes.outputs.has-changes == 'true')
+    uses: ./.github/workflows/_setup-and-discovery.yml
+    with:
+      config-file: ${{ inputs.config-file }}
+      dotnet-version: ${{ inputs.dotnet-version }}
+      build-configuration: ${{ inputs.build-configuration }}
+      run-tests: ${{ inputs.run-tests }}
+      enable-code-coverage: ${{ inputs.enable-code-coverage }}
+      publish-packages: ${{ inputs.publish-packages }}
+      package-projects: ${{ inputs.package-projects }}
+      org-name: ${{ inputs.org-name }}
+
+  build:
+    needs: [setup, detect-mode, detect-changes]
+    if: always() && needs.setup.result == 'success'
+    uses: ./.github/workflows/_build.yml
+    with:
+      dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
+      build-config: ${{ needs.setup.outputs.build-config }}
+      # FIXED: Use the value directly when all conditions pass, or fall back to empty
+      # The key is: ONLY pass the array when incremental mode succeeded with actual changes
+      filter-projects: ${{ needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.has-changes == 'true' && needs.detect-changes.outputs.changed-projects != '[]' && needs.detect-changes.outputs.changed-projects || '[]' }}
+
+  test:
+    needs: [setup, build, detect-mode, detect-changes]
+    if: always() && needs.setup.outputs.run-tests == 'true' && needs.build.result == 'success'
+    uses: ./.github/workflows/_test.yml
+    with:
+      dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
+      build-config: ${{ needs.setup.outputs.build-config }}
+      code-coverage: ${{ needs.setup.outputs.code-coverage }}
+      # Use changed-test-projects for testing (includes auto-discovered test projects for changed source projects)
+      filter-projects: ${{ needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.has-changes == 'true' && needs.detect-changes.outputs.changed-test-projects != '[]' && needs.detect-changes.outputs.changed-test-projects || '[]' }}
+
+  package:
+    needs: [setup, build, test, detect-mode, detect-changes]
+    if: always() && needs.setup.outputs.publish-packages == 'true' && needs.build.result == 'success'
+    uses: ./.github/workflows/_package.yml
+    secrets: inherit
+    with:
+      dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
+      build-config: ${{ needs.setup.outputs.build-config }}
+      # FIXED: For packaging, check changed-src-projects instead
+      packable-projects: ${{ needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.has-changes == 'true' && needs.detect-changes.outputs.changed-src-projects != '[]' && needs.detect-changes.outputs.changed-src-projects || needs.setup.outputs.packable-projects }}
+      org-name: ${{ needs.setup.outputs.org-name }}
+
+  summary:
+    needs: [setup, build, test, package, detect-mode, detect-changes]
+    if: always()
+    uses: ./.github/workflows/_summary.yml
+    with:
+      mode: ${{ needs.setup.outputs.mode }}
+      dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
+      build-config: ${{ needs.setup.outputs.build-config }}
+      packable-projects: ${{ needs.setup.outputs.packable-projects }}
+      setup-result: ${{ needs.setup.result }}
+      build-result: ${{ needs.build.result }}
+      test-result: ${{ needs.test.result }}
+      package-result: ${{ needs.package.result }}
+      # Pass build mode information
+      incremental-build: ${{ needs.detect-mode.outputs.incremental }}
+      incremental-reason: ${{ needs.detect-mode.outputs.reason }}
+      changed-projects: ${{ (needs.detect-changes.result == 'success') && needs.detect-changes.outputs.changed-projects || '[]' }}

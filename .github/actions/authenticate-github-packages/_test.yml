@@ -1,0 +1,101 @@
+﻿name: Test
+
+on:
+  workflow_call:
+    inputs:
+      dotnet-version:
+        description: '.NET SDK version'
+        required: true
+        type: string
+      build-config:
+        description: 'Build configuration'
+        required: true
+        type: string
+      code-coverage:
+        description: 'Enable code coverage'
+        required: false
+        type: string
+        default: 'false'
+      filter-projects:
+        description: 'JSON array of specific projects to test (empty = test all)'
+        required: false
+        type: string
+        default: '[]'
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: windows-latest  # Match the old workflow
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+      
+      - name: Authenticate to GitHub Packages
+        uses: EagleViewEnt/.github/.github/actions/authenticate-github-packages@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          org-name: 'EagleViewEnt'
+      
+      - name: Restore dependencies
+        run: dotnet restore
+      
+      - name: Build
+        run: dotnet build --no-restore --configuration ${{ inputs.build-config }}
+      
+      - name: Run tests
+        shell: pwsh
+        run: |
+          $filterProjects = '${{ inputs.filter-projects }}'
+          
+          if ($filterProjects -and $filterProjects -ne '[]') {
+            Write-Host "⚡ Incremental Test Mode"
+            Write-Host "Testing specific projects only..."
+            Write-Host ""
+            
+            $projects = $filterProjects | ConvertFrom-Json
+            
+            if ($projects.Count -eq 0) {
+              Write-Host "ℹ️ No test projects in changed set. Skipping tests."
+              exit 0
+            }
+            
+            Write-Host "🧪 Running tests for $($projects.Count) project(s)"
+            Write-Host ""
+            
+            foreach ($project in $projects) {
+              Write-Host "▶️ Testing: $project"
+              dotnet test "$project" `
+                --configuration ${{ inputs.build-config }} `
+                --no-build `
+                --verbosity normal `
+                --collect:"XPlat Code Coverage"
+              
+              if ($LASTEXITCODE -ne 0) {
+                Write-Error "Tests failed for: $project"
+                exit $LASTEXITCODE
+              }
+            }
+          } else {
+            Write-Host "🚀 Full Test Mode"
+            Write-Host "Testing entire solution..."
+            dotnet test `
+              --configuration ${{ inputs.build-config }} `
+              --no-build `
+              --verbosity normal `
+              --collect:"XPlat Code Coverage"
+          }
+      
+      - name: Upload coverage reports
+        if: inputs.code-coverage == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: '**/TestResults/**/coverage.cobertura.xml'
