@@ -147,7 +147,7 @@ jobs:
 
   package:
     needs: [setup, build, test, detect-mode, detect-changes]
-    if: always() && needs.setup.outputs.publish-packages == 'true' && needs.build.result == 'success'
+    if: always() && needs.setup.outputs.publish-packages == 'true' && needs.build.result == 'success' && (needs.test.result == 'success' || needs.test.result == 'skipped')
     uses: ./.github/workflows/_package.yml
     secrets: inherit
     with:
