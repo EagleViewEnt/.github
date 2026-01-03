@@ -1,0 +1,44 @@
+﻿name: 'Setup GitHub Packages Authentication'
+description: 'Configure NuGet authentication for GitHub Packages'
+author: 'EagleViewEnt'
+
+inputs:
+  github-token:
+    description: 'GitHub token for authentication'
+    required: true
+  org-name:
+    description: 'GitHub organization name'
+    required: false
+    default: 'EagleViewEnt'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Authenticate to GitHub Packages
+      shell: pwsh
+      run: |
+        Write-Host "🔐 Configuring GitHub Packages authentication..." -ForegroundColor Cyan
+        
+        # Remove existing github source to avoid conflicts
+        dotnet nuget remove source github 2>&1 | Out-Null
+        
+        # Add GitHub Packages source with authentication
+        $source = "https://nuget.pkg.github.com/${{ inputs.org-name }}/index.json"
+        Write-Host "   Adding source: $source" -ForegroundColor Gray
+        
+        dotnet nuget add source $source `
+          --name github `
+          --username ${{ github.actor }} `
+          --password ${{ inputs.github-token }} `
+          --store-password-in-clear-text
+        
+        if ($LASTEXITCODE -eq 0) {
+          Write-Host "✅ Authentication configured successfully" -ForegroundColor Green
+        } else {
+          Write-Error "❌ Failed to configure authentication"
+          exit $LASTEXITCODE
+        }
+
+branding:
+  icon: 'lock'
+  color: 'blue'
