@@ -49,16 +49,22 @@ jobs:
       
       - name: Restore dependencies
         run: dotnet restore "${{ matrix.project }}"
-      
+
+      # Razor class libraries must be built before packing: dotnet pack alone does not
+      # always produce the static web assets manifest, and packing then fails with
+      # "Manifest file at 'obj/.../staticwebassets.build.json' not found".
+      - name: Build project
+        run: dotnet build "${{ matrix.project }}" --configuration ${{ inputs.build-config }} --no-restore
+
       - name: Pack project
         shell: pwsh
         run: |
           Write-Host "Packing: ${{ matrix.project }}"
           dotnet pack "${{ matrix.project }}" `
             --configuration ${{ inputs.build-config }} `
-            --no-restore `
+            --no-build `
             --output ./artifacts
-      
+
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4
         with:
