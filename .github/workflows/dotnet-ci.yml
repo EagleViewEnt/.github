@@ -55,10 +55,19 @@ jobs:
       - name: Determine build mode
         id: mode
         shell: pwsh
+        # The commit message is untrusted input and must not be interpolated into the
+        # script body: any quote, backtick, or newline it contains becomes PowerShell
+        # syntax. A multi-line message with an embedded quote broke every tag build with
+        # "Unexpected token ... in expression or statement". Passing it through the
+        # environment keeps it as data.
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          SOURCE_REF: ${{ github.ref }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          $commitMsg = "${{ github.event.head_commit.message }}"
-          $ref = "${{ github.ref }}"
-          $eventName = "${{ github.event_name }}"
+          $commitMsg = $env:COMMIT_MESSAGE
+          $ref = $env:SOURCE_REF
+          $eventName = $env:EVENT_NAME
           
           Write-Host "=============================================="
           Write-Host "   Build Mode Auto-Detection"
