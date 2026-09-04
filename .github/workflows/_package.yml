@@ -67,7 +67,7 @@ jobs:
           retention-days: 90
       
       - name: Push to GitHub Packages
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
         shell: pwsh
         run: |
           $source = "https://nuget.pkg.github.com/${{ inputs.org-name }}/index.json"

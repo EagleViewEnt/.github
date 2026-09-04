@@ -156,8 +156,12 @@ jobs:
     with:
       dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
       build-config: ${{ needs.setup.outputs.build-config }}
-      # FIXED: For packaging, check changed-src-projects instead
-      packable-projects: ${{ needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.has-changes == 'true' && needs.detect-changes.outputs.changed-src-projects != '[]' && needs.detect-changes.outputs.changed-src-projects || needs.setup.outputs.packable-projects }}
+      # Packaging ALWAYS uses the full packable set, never the incremental subset.
+      # MinVer derives a new version for every project on every commit, so packing
+      # only changed projects publishes packages whose sibling dependencies were
+      # never pushed at that height -> NU1100 on consumers. Build/test stay
+      # incremental for speed; packaging must stay complete for correctness.
+      packable-projects: ${{ needs.setup.outputs.packable-projects }}
       org-name: ${{ needs.setup.outputs.org-name }}
 
   summary:
