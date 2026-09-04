@@ -47,23 +47,19 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           org-name: 'EagleViewEnt'
       
-      - name: Restore dependencies
-        run: dotnet restore "${{ matrix.project }}"
-
-      # Razor class libraries must be built before packing: dotnet pack alone does not
-      # always produce the static web assets manifest, and packing then fails with
-      # "Manifest file at 'obj/.../staticwebassets.build.json' not found".
-      - name: Build project
-        run: dotnet build "${{ matrix.project }}" --configuration ${{ inputs.build-config }} --no-restore
-
+      # A single pack invocation performs restore, build, and pack. Splitting these
+      # apart breaks Razor class libraries: packing without a prior build cannot find
+      # staticwebassets.build.json, while packing after a separate build re-runs static
+      # web asset discovery over existing output and fails on the duplicated scoped CSS
+      # bundle.
       - name: Pack project
         shell: pwsh
         run: |
           Write-Host "Packing: ${{ matrix.project }}"
           dotnet pack "${{ matrix.project }}" `
             --configuration ${{ inputs.build-config }} `
-            --no-build `
             --output ./artifacts
+
 
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4
