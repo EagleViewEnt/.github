@@ -166,15 +166,16 @@ jobs:
                   }
                 }
                 
-                # Check for IsPackable property
+                # Evaluate the property through MSBuild rather than grepping the csproj
+                # text, so values inherited from Directory.Build.props are honoured.
                 try {
-                  $content = Get-Content $path -Raw -ErrorAction Stop
-                  if ($content -match "<$propertyFilter>true</$propertyFilter>") {
+                  $value = (dotnet msbuild $path "-getProperty:$propertyFilter" -v:quiet -nologo 2>$null)
+                  if ($LASTEXITCODE -eq 0 -and "$value".Trim() -eq 'true') {
                     Write-Host "   ✅ Found: $($_.Name)"
                     return $true
                   }
                 } catch {
-                  Write-Host "   ⚠️ Error reading: $($_.Name)"
+                  Write-Host "   ⚠️ Error evaluating: $($_.Name)"
                 }
                 return $false
               } | ForEach-Object {
