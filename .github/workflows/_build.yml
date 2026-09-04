@@ -39,8 +39,26 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           org-name: 'EagleViewEnt'
       
+      - name: Resolve solution
+        id: sln
+        shell: pwsh
+        run: |
+          # A bare 'dotnet build' fails with MSB1011 when a repo contains more than one
+          # solution file, so pick one explicitly and prefer the repo-named solution.
+          $solutions = @(Get-ChildItem -Filter *.sln -File)
+          if ($solutions.Count -eq 0) { $solutions = @(Get-ChildItem -Filter *.slnx -File) }
+          if ($solutions.Count -eq 0) {
+            Write-Error "No solution file found in the repository root."
+            exit 1
+          }
+          $repo = "${{ github.event.repository.name }}"
+          $chosen = $solutions | Where-Object { $_.BaseName -match [regex]::Escape($repo) } | Select-Object -First 1
+          if (-not $chosen) { $chosen = $solutions | Sort-Object Name | Select-Object -First 1 }
+          Write-Host "Using solution: $($chosen.Name)"
+          "path=$($chosen.Name)" >> $env:GITHUB_OUTPUT
+
       - name: Restore dependencies
-        run: dotnet restore
+        run: dotnet restore "${{ steps.sln.outputs.path }}"
       
       - name: Build
         shell: pwsh
@@ -66,5 +84,5 @@ jobs:
           } else {
             Write-Host "🚀 Full Build Mode"
             Write-Host "Building entire solution..."
-            dotnet build --no-restore --configuration ${{ inputs.build-config }}
+            dotnet build "${{ steps.sln.outputs.path }}" --no-restore --configuration ${{ inputs.build-config }}
           }
