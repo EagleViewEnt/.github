@@ -72,7 +72,10 @@ jobs:
           $fullBuild = $false
           $reason = ""
           
-          if ($commitMsg -match '\[Release\]' -or $commitMsg -match '\[FullBuild\]') {
+          if ($eventName -eq 'workflow_dispatch') {
+            $fullBuild = $true
+            $reason = "Manual run (workflow_dispatch) always builds everything"
+          } elseif ($commitMsg -match '\[Release\]' -or $commitMsg -match '\[FullBuild\]') {
             $fullBuild = $true
             $reason = "Commit message contains [Release] or [FullBuild]"
           } elseif ($ref -match '^refs/tags/v') {
