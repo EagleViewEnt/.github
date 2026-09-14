@@ -21,18 +21,35 @@ jobs:
   build:
     name: Build Solution
     runs-on: windows-latest  # Match the old workflow
-    
+
+    env:
+      # Pin the global packages folder so the cache path does not depend on the runner
+      # image's default HOME layout.
+      NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ inputs.dotnet-version }}
-      
+
+      # setup-dotnet's built-in `cache: true` is not usable here: it requires
+      # packages.lock.json, which no EagleViewEnt repo generates. Every repo does use
+      # Central Package Management, so Directory.Packages.props plus the project files
+      # fully describe the dependency graph and make a sound cache key.
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
       - name: Authenticate to GitHub Packages
         uses: EagleViewEnt/.github/.github/actions/authenticate-github-packages@main
         with:
