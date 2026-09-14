@@ -16,9 +16,13 @@ on:
       # can pass ubuntu-latest: Linux runners provision faster and are billed at 1x
       # instead of 2x. Setup .NET measured at 250s / 37% of total job time on Windows.
       #
-      # This stays a per-repo choice rather than an org-wide default because
-      # EagleViewEnt.Utilities.Windows targets win-x64/win-arm64 and must build and
-      # test on Windows.
+      # This stays a per-repo choice rather than an org-wide default. EagleViewEnt/Utilities
+      # must stay on Windows: it depends on System.Security.Cryptography.ProtectedData
+      # (Windows DPAPI) via Utilities.Encryption, which throws PlatformNotSupportedException
+      # on Linux. A trial run measured 248 such failures cascading through Encryption,
+      # Financial, Serialization, Localization and EFCore. Note the constraint is DPAPI,
+      # not the Utilities.Windows project: that one targets plain net10.0, guards its
+      # Windows APIs with [SupportedOSPlatform], and its tests pass on Linux.
       runner-os:
         description: 'Runner image for the .NET jobs (windows-latest or ubuntu-latest)'
         required: false
