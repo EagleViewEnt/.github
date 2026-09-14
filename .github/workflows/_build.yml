@@ -1,4 +1,4 @@
-﻿name: Build
+﻿name: Build and Test
 
 on:
   workflow_call:
@@ -21,10 +21,32 @@ on:
         required: false
         type: string
         default: 'windows-latest'
+      run-tests:
+        description: 'Whether to run tests after building'
+        required: false
+        type: string
+        default: 'true'
+      code-coverage:
+        description: 'Enable code coverage'
+        required: false
+        type: string
+        default: 'false'
+      test-filter-projects:
+        description: 'JSON array of specific test projects to run (empty = test all)'
+        required: false
+        type: string
+        default: '[]'
 
 jobs:
   build:
-    name: Build Solution
+    # Build and test share one job deliberately. They previously ran as two reusable
+    # workflows, which meant two runners, two checkouts, two SDK installs, two cache
+    # restores, two package authentications - and, because compiled output cannot cross
+    # a job boundary without an artifact round-trip, two full compiles of the same code.
+    # The test job then built the ENTIRE solution even when the build job had been
+    # restricted to the changed projects, so it was doing strictly more work than the
+    # job it nominally depended on. See EagleViewEnt/.github#7.
+    name: Build and Test
     runs-on: ${{ inputs.runner-os }}
 
     env:
@@ -86,18 +108,29 @@ jobs:
         shell: pwsh
         run: |
           $filterProjects = '${{ inputs.filter-projects }}'
-          
+          $testProjects = '${{ inputs.test-filter-projects }}'
+
           if ($filterProjects -and $filterProjects -ne '[]') {
             Write-Host "⚡ Incremental Build Mode"
             Write-Host "Building specific projects only..."
             Write-Host ""
-            
-            $projects = $filterProjects | ConvertFrom-Json
-            
+
+            $projects = @($filterProjects | ConvertFrom-Json)
+
+            # The test step runs with --no-build, so anything it intends to execute must
+            # be compiled here. Test projects are not necessarily in the changed set:
+            # changing a source project selects its associated test project for testing
+            # without adding it to filter-projects.
+            if ($testProjects -and $testProjects -ne '[]') {
+              $projects += @($testProjects | ConvertFrom-Json)
+            }
+
+            $projects = @($projects | Select-Object -Unique)
+
             foreach ($project in $projects) {
               Write-Host "🔨 Building: $project"
               dotnet build "$project" --no-restore --configuration ${{ inputs.build-config }}
-              
+
               if ($LASTEXITCODE -ne 0) {
                 Write-Error "Build failed for: $project"
                 exit $LASTEXITCODE
@@ -108,3 +141,54 @@ jobs:
             Write-Host "Building entire solution..."
             dotnet build "${{ steps.sln.outputs.path }}" --no-restore --configuration ${{ inputs.build-config }}
           }
+
+      - name: Run tests
+        if: inputs.run-tests == 'true'
+        shell: pwsh
+        run: |
+          $filterProjects = '${{ inputs.test-filter-projects }}'
+          $buildFilter = '${{ inputs.filter-projects }}'
+
+          if ($buildFilter -and $buildFilter -ne '[]') {
+            Write-Host "⚡ Incremental Test Mode"
+            Write-Host ""
+
+            $projects = @($filterProjects | ConvertFrom-Json)
+
+            if ($projects.Count -eq 0) {
+              Write-Host "ℹ️ No test projects in changed set. Skipping tests."
+              exit 0
+            }
+
+            Write-Host "🧪 Running tests for $($projects.Count) project(s)"
+            Write-Host ""
+
+            foreach ($project in $projects) {
+              Write-Host "▶️ Testing: $project"
+              dotnet test "$project" `
+                --configuration ${{ inputs.build-config }} `
+                --no-build `
+                --verbosity normal `
+                --collect:"XPlat Code Coverage"
+
+              if ($LASTEXITCODE -ne 0) {
+                Write-Error "Tests failed for: $project"
+                exit $LASTEXITCODE
+              }
+            }
+          } else {
+            Write-Host "🚀 Full Test Mode"
+            Write-Host "Testing entire solution..."
+            dotnet test "${{ steps.sln.outputs.path }}" `
+              --configuration ${{ inputs.build-config }} `
+              --no-build `
+              --verbosity normal `
+              --collect:"XPlat Code Coverage"
+          }
+
+      - name: Upload coverage reports
+        if: inputs.run-tests == 'true' && inputs.code-coverage == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: '**/TestResults/**/coverage.cobertura.xml'

@@ -162,22 +162,14 @@ jobs:
       # FIXED: Use the value directly when all conditions pass, or fall back to empty
       # The key is: ONLY pass the array when incremental mode succeeded with actual changes
       filter-projects: ${{ needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.has-changes == 'true' && needs.detect-changes.outputs.changed-projects != '[]' && needs.detect-changes.outputs.changed-projects || '[]' }}
-
-  test:
-    needs: [setup, build, detect-mode, detect-changes]
-    if: always() && needs.setup.outputs.run-tests == 'true' && needs.build.result == 'success'
-    uses: ./.github/workflows/_test.yml
-    with:
-      dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
-      build-config: ${{ needs.setup.outputs.build-config }}
+      run-tests: ${{ needs.setup.outputs.run-tests }}
       code-coverage: ${{ needs.setup.outputs.code-coverage }}
-      runner-os: ${{ inputs.runner-os }}
       # Use changed-test-projects for testing (includes auto-discovered test projects for changed source projects)
-      filter-projects: ${{ needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.has-changes == 'true' && needs.detect-changes.outputs.changed-test-projects != '[]' && needs.detect-changes.outputs.changed-test-projects || '[]' }}
+      test-filter-projects: ${{ needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.has-changes == 'true' && needs.detect-changes.outputs.changed-test-projects != '[]' && needs.detect-changes.outputs.changed-test-projects || '[]' }}
 
   package:
-    needs: [setup, build, test, detect-mode, detect-changes]
-    if: always() && needs.setup.outputs.publish-packages == 'true' && needs.build.result == 'success' && (needs.test.result == 'success' || needs.test.result == 'skipped')
+    needs: [setup, build, detect-mode, detect-changes]
+    if: always() && needs.setup.outputs.publish-packages == 'true' && needs.build.result == 'success'
     uses: ./.github/workflows/_package.yml
     secrets: inherit
     with:
@@ -193,7 +185,7 @@ jobs:
       runner-os: ${{ inputs.runner-os }}
 
   summary:
-    needs: [setup, build, test, package, detect-mode, detect-changes]
+    needs: [setup, build, package, detect-mode, detect-changes]
     if: always()
     uses: ./.github/workflows/_summary.yml
     with:
@@ -203,7 +195,10 @@ jobs:
       packable-projects: ${{ needs.setup.outputs.packable-projects }}
       setup-result: ${{ needs.setup.result }}
       build-result: ${{ needs.build.result }}
-      test-result: ${{ needs.test.result }}
+      # Build and test now run in one job, so they share a single result. Tests that
+      # were skipped (run-tests false, or no test projects in the changed set) are
+      # reported by the build job's own log rather than a distinct job status.
+      test-result: ${{ needs.build.result }}
       package-result: ${{ needs.package.result }}
       # Pass build mode information
       incremental-build: ${{ needs.detect-mode.outputs.incremental }}
