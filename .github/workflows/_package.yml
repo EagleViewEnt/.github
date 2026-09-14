@@ -19,11 +19,16 @@ on:
         description: 'Organization name for publishing'
         required: true
         type: string
+      runner-os:
+        description: 'Runner image to execute this job on'
+        required: false
+        type: string
+        default: 'windows-latest'
 
 jobs:
   package:
     name: Package and Publish
-    runs-on: windows-latest  # Match the old workflow
+    runs-on: ${{ inputs.runner-os }}
     if: inputs.packable-projects != '[]' && inputs.packable-projects != ''
     
     strategy:
