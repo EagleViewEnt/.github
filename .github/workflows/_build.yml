@@ -16,11 +16,16 @@ on:
         required: false
         type: string
         default: '[]'
+      runner-os:
+        description: 'Runner image to execute this job on'
+        required: false
+        type: string
+        default: 'windows-latest'
 
 jobs:
   build:
     name: Build Solution
-    runs-on: windows-latest  # Match the old workflow
+    runs-on: ${{ inputs.runner-os }}
 
     env:
       # Pin the global packages folder so the cache path does not depend on the runner

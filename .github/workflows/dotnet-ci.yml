@@ -8,6 +8,22 @@ on:
         description: 'Path to workflow-config.json'
         required: false
         type: string
+
+      # Runner selection.
+      #
+      # Defaults to windows-latest so every existing repo keeps its current behavior.
+      # Repos with no Windows dependency (for example Blazor, which is pure net10.0)
+      # can pass ubuntu-latest: Linux runners provision faster and are billed at 1x
+      # instead of 2x. Setup .NET measured at 250s / 37% of total job time on Windows.
+      #
+      # This stays a per-repo choice rather than an org-wide default because
+      # EagleViewEnt.Utilities.Windows targets win-x64/win-arm64 and must build and
+      # test on Windows.
+      runner-os:
+        description: 'Runner image for the .NET jobs (windows-latest or ubuntu-latest)'
+        required: false
+        type: string
+        default: 'windows-latest'
       
       # Legacy mode inputs (backward compatibility)
       dotnet-version:
@@ -142,6 +158,7 @@ jobs:
     with:
       dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
       build-config: ${{ needs.setup.outputs.build-config }}
+      runner-os: ${{ inputs.runner-os }}
       # FIXED: Use the value directly when all conditions pass, or fall back to empty
       # The key is: ONLY pass the array when incremental mode succeeded with actual changes
       filter-projects: ${{ needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.has-changes == 'true' && needs.detect-changes.outputs.changed-projects != '[]' && needs.detect-changes.outputs.changed-projects || '[]' }}
@@ -154,6 +171,7 @@ jobs:
       dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
       build-config: ${{ needs.setup.outputs.build-config }}
       code-coverage: ${{ needs.setup.outputs.code-coverage }}
+      runner-os: ${{ inputs.runner-os }}
       # Use changed-test-projects for testing (includes auto-discovered test projects for changed source projects)
       filter-projects: ${{ needs.detect-mode.outputs.incremental == 'true' && needs.detect-changes.result == 'success' && needs.detect-changes.outputs.has-changes == 'true' && needs.detect-changes.outputs.changed-test-projects != '[]' && needs.detect-changes.outputs.changed-test-projects || '[]' }}
 
@@ -172,6 +190,7 @@ jobs:
       # incremental for speed; packaging must stay complete for correctness.
       packable-projects: ${{ needs.setup.outputs.packable-projects }}
       org-name: ${{ needs.setup.outputs.org-name }}
+      runner-os: ${{ inputs.runner-os }}
 
   summary:
     needs: [setup, build, test, package, detect-mode, detect-changes]
