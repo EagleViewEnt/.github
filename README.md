@@ -17,8 +17,7 @@ This repository contains shared workflows, actions, and templates used across al
 │   ├── dotnet-ci.yml      # Main reusable .NET CI/CD workflow
 │   ├── _detect-changes.yml      # Determines if there are code changes
 │   ├── _setup-and-discovery.yml      # Discovers projects and sets up environment
-│   ├── _build.yml      # Builds the project(s)
-│   ├── _test.yml      # Tests the project(s)
+│   ├── _build.yml      # Builds and tests the project(s)
 │   ├── _package.yml      # Packages the project(s)
 │   └── _summary.yml      # Summarizes the workflow results
 │

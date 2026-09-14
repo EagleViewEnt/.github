@@ -134,6 +134,5 @@ jobs:
           echo "| Job | Status |" >> $env:GITHUB_STEP_SUMMARY
           echo "|-----|--------|" >> $env:GITHUB_STEP_SUMMARY
           echo "| Setup | ${{ inputs.setup-result }} |" >> $env:GITHUB_STEP_SUMMARY
-          echo "| Build | ${{ inputs.build-result }} |" >> $env:GITHUB_STEP_SUMMARY
-          echo "| Test | ${{ inputs.test-result }} |" >> $env:GITHUB_STEP_SUMMARY
+          echo "| Build and Test | ${{ inputs.build-result }} |" >> $env:GITHUB_STEP_SUMMARY
           echo "| Package | ${{ inputs.package-result }} |" >> $env:GITHUB_STEP_SUMMARY
