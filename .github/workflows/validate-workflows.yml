@@ -1,0 +1,111 @@
+name: Validate Workflows
+
+# This repository holds the shared CI workflows for every EagleViewEnt repo, so a
+# mistake here breaks all of them at once. Every workflow file is `workflow_call`
+# only, which means nothing in this repo self-tests: pull requests previously had
+# no checks at all and were merged on static review alone.
+#
+# This job is that missing gate. It parses every workflow and asserts the
+# invariants that a broken shared pipeline would violate.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate workflow YAML
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate workflow syntax and invariants
+        shell: pwsh
+        run: |
+          Install-Module powershell-yaml -Scope CurrentUser -Force -AllowClobber
+          Import-Module powershell-yaml
+
+          $failed = $false
+          $files = Get-ChildItem .github/workflows -Filter *.yml -File
+
+          if ($files.Count -eq 0) {
+            Write-Error "No workflow files found - the validation glob is wrong."
+            exit 1
+          }
+
+          foreach ($file in $files) {
+            Write-Host "==> $($file.Name)"
+
+            try {
+              $doc = ConvertFrom-Yaml (Get-Content $file.FullName -Raw)
+            }
+            catch {
+              Write-Host "    INVALID YAML: $_"
+              $failed = $true
+              continue
+            }
+
+            if (-not $doc.jobs) {
+              Write-Host "    No jobs defined."
+              $failed = $true
+              continue
+            }
+
+            foreach ($jobName in $doc.jobs.Keys) {
+              $job = $doc.jobs[$jobName]
+
+              # Reusable-workflow callers have no steps of their own.
+              if (-not $job.steps) { continue }
+
+              $stepNames = @($job.steps | ForEach-Object { $_.name })
+
+              # The NuGet cache must be restored before anything that restores
+              # packages, otherwise the cache silently never gets used.
+              $cacheIndex = [array]::IndexOf($stepNames, 'Cache NuGet packages')
+              if ($cacheIndex -ge 0) {
+                $restoringSteps = @('Restore dependencies', 'Pack project')
+
+                foreach ($restoringStep in $restoringSteps) {
+                  $restoreIndex = [array]::IndexOf($stepNames, $restoringStep)
+
+                  if ($restoreIndex -ge 0 -and $restoreIndex -lt $cacheIndex) {
+                    Write-Host "    '$restoringStep' runs before 'Cache NuGet packages' in job '$jobName'."
+                    $failed = $true
+                  }
+                }
+
+                # A cache whose path does not match NUGET_PACKAGES caches an empty
+                # directory and always misses.
+                $cacheStep = $job.steps[$cacheIndex]
+                $cachePath = $cacheStep.with.path
+                $packagesPath = $job.env.NUGET_PACKAGES
+
+                if (-not $packagesPath) {
+                  Write-Host "    Job '$jobName' caches NuGet packages but does not set env.NUGET_PACKAGES."
+                  $failed = $true
+                }
+                elseif ($cachePath -ne $packagesPath) {
+                  Write-Host "    Job '$jobName' cache path '$cachePath' does not match env.NUGET_PACKAGES '$packagesPath'."
+                  $failed = $true
+                }
+              }
+            }
+
+            Write-Host "    OK"
+          }
+
+          if ($failed) {
+            Write-Error "Workflow validation failed."
+            exit 1
+          }
+
+          Write-Host ""
+          Write-Host "All $($files.Count) workflow file(s) valid."
