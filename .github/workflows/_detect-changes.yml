@@ -49,10 +49,13 @@ jobs:
           
           # Define file extensions that should trigger builds
           $codeExtensions = @(
-            '.cs', '.csproj', '.sln',           # C# files
+            '.cs', '.csproj', '.sln', '.slnx',  # C# files
+            '.props', '.targets',               # MSBuild files
             '.config', '.json', '.xml',         # Config files
             '.resx', '.xaml',                   # Resource files
             '.cshtml', '.razor',                # Web files
+            '.scss', '.sass', '.css',           # Stylesheets (shipped in packages)
+            '.js', '.mjs', '.ts',               # Scripts (shipped in packages)
             '.sql', '.edmx',                    # Database files
             '.tt', '.t4'                        # Code generation
           )
@@ -199,10 +202,15 @@ jobs:
           Write-Host ""
           Write-Host "[RESULT] Affected projects: $($affectedProjects.Count)"
           
+          # Reaching here means code files changed but none of them sit under a project.
+          # Repo-root files such as Directory.Build.props and Directory.Packages.props
+          # affect every project, so treating them as "no changes" would skip the build
+          # and silently stop publishing. Empty filter arrays mean "build everything"
+          # downstream, so report changes and let the build widen to the full solution.
           if ($affectedProjects.Count -eq 0) {
-            Write-Host "[SKIP] No projects affected by changes"
+            Write-Host "[FULL] Changed code files map to no project - building everything"
             echo "changed-projects=[]" >> $env:GITHUB_OUTPUT
-            echo "has-changes=false" >> $env:GITHUB_OUTPUT
+            echo "has-changes=true" >> $env:GITHUB_OUTPUT
             echo "changed-src-projects=[]" >> $env:GITHUB_OUTPUT
             echo "changed-test-projects=[]" >> $env:GITHUB_OUTPUT
             exit 0
