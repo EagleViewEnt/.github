@@ -53,6 +53,8 @@ jobs:
             '.config', '.json', '.xml',         # Config files
             '.resx', '.xaml',                   # Resource files
             '.cshtml', '.razor',                # Web files
+            '.scss', '.sass', '.css',           # Stylesheets (shipped in packages)
+            '.js', '.mjs', '.ts',               # Scripts (shipped in packages)
             '.sql', '.edmx',                    # Database files
             '.tt', '.t4'                        # Code generation
           )
