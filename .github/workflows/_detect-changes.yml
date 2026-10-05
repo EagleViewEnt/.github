@@ -26,6 +26,7 @@ jobs:
   detect:
     name: Detect Changed Projects
     runs-on: windows-latest
+    timeout-minutes: 10
     outputs:
       changed-projects: ${{ steps.detect.outputs.changed-projects }}
       has-changes: ${{ steps.detect.outputs.has-changes }}
