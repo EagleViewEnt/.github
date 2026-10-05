@@ -73,6 +73,7 @@ jobs:
   setup:
     name: Setup and Discovery
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       mode: ${{ steps.detect-mode.outputs.mode }}
       dotnet-version: ${{ steps.config.outputs.dotnet-version }}

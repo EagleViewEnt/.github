@@ -55,6 +55,10 @@ jobs:
   summary:
     name: Workflow Summary
     runs-on: windows-latest  # Use Windows for consistency
+    # This job is always() and needs its own runner just to write a step summary, so a
+    # degraded runner pool leaves it queued and the run cannot conclude. Without an
+    # explicit cap it inherits the 360-minute default. See EagleViewEnt/Utilities#13.
+    timeout-minutes: 5
     if: always()
     
     steps:

@@ -68,6 +68,7 @@ jobs:
   detect-mode:
     name: Detect Build Mode
     runs-on: windows-latest
+    timeout-minutes: 5
     outputs:
       incremental: ${{ steps.mode.outputs.incremental }}
       reason: ${{ steps.mode.outputs.reason }}
