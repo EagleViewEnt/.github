@@ -48,6 +48,7 @@ jobs:
     # job it nominally depended on. See EagleViewEnt/.github#7.
     name: Build and Test
     runs-on: ${{ inputs.runner-os }}
+    timeout-minutes: 30
 
     env:
       # Pin the global packages folder so the cache path does not depend on the runner
