@@ -4,8 +4,23 @@ author: 'EagleViewEnt'
 
 inputs:
   github-token:
-    description: 'GitHub token for authentication'
+    description: 'Per-run GITHUB_TOKEN. Sufficient when a repo only reads or publishes its own packages.'
     required: true
+  packages-read-token:
+    description: >
+      Organization token used when the repo restores private packages published by
+      sibling repositories. The per-run GITHUB_TOKEN is scoped to its own repository
+      and cannot read those, so pass PACKAGES_READ_TOKEN here. Preferred over
+      github-token when both are supplied.
+    required: false
+    default: ''
+  require-cross-repo-read:
+    description: >
+      Set true when the repo genuinely depends on sibling packages. Turns a missing
+      packages-read-token into an immediate, named failure instead of a wall of
+      NU1301/403 errors much later in restore.
+    required: false
+    default: 'false'
   org-name:
     description: 'GitHub organization name'
     required: false
@@ -16,8 +31,27 @@ runs:
   steps:
     - name: Authenticate to GitHub Packages
       shell: pwsh
+      env:
+        PER_RUN_TOKEN: ${{ inputs.github-token }}
+        CROSS_REPO_TOKEN: ${{ inputs.packages-read-token }}
       run: |
         Write-Host "🔐 Configuring GitHub Packages authentication..." -ForegroundColor Cyan
+
+        # Prefer the org token when present: it can read sibling repos' private
+        # packages, which the per-run token cannot. Repos that only touch their own
+        # packages pass nothing and keep using GITHUB_TOKEN.
+        $token = $env:CROSS_REPO_TOKEN
+        if ([string]::IsNullOrWhiteSpace($token)) {
+          if ('${{ inputs.require-cross-repo-read }}' -eq 'true') {
+            Write-Host "::error::This repository restores private packages from sibling repositories, but no packages-read-token was supplied. Pass secrets.PACKAGES_READ_TOKEN to this action."
+            exit 1
+          }
+          $token = $env:PER_RUN_TOKEN
+          Write-Host "   Using the per-run GITHUB_TOKEN." -ForegroundColor Gray
+        }
+        else {
+          Write-Host "   Using the organization packages-read token." -ForegroundColor Gray
+        }
 
         $source = "https://nuget.pkg.github.com/${{ inputs.org-name }}/index.json"
 
@@ -44,7 +78,7 @@ runs:
           dotnet nuget update source $name `
             --source $source `
             --username ${{ github.actor }} `
-            --password ${{ inputs.github-token }} `
+            --password $token `
             --store-password-in-clear-text
         }
         else {
@@ -52,7 +86,7 @@ runs:
           dotnet nuget add source $source `
             --name EagleViewEnt `
             --username ${{ github.actor }} `
-            --password ${{ inputs.github-token }} `
+            --password $token `
             --store-password-in-clear-text
         }
 
