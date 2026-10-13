@@ -36,6 +36,15 @@ on:
         required: false
         type: string
         default: '[]'
+    secrets:
+      # The per-run GITHUB_TOKEN can read 'internal' org packages but not 'private'
+      # ones. Repos consuming a private sibling package (for example MedShelf ->
+      # EagleViewEnt.Blazor.Authentication) must pass the org read token, or restore
+      # fails with NU1301/403. Optional so repos depending only on internal packages
+      # keep working unchanged.
+      PACKAGES_READ_TOKEN:
+        description: 'Org-level PAT with read:packages, for private sibling packages'
+        required: false
 
 jobs:
   build:
@@ -82,6 +91,7 @@ jobs:
         uses: EagleViewEnt/.github/.github/actions/authenticate-github-packages@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          packages-read-token: ${{ secrets.PACKAGES_READ_TOKEN }}
           org-name: 'EagleViewEnt'
       
       - name: Resolve solution
