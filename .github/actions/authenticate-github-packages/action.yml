@@ -18,20 +18,44 @@ runs:
       shell: pwsh
       run: |
         Write-Host "🔐 Configuring GitHub Packages authentication..." -ForegroundColor Cyan
-        
-        # Remove existing github source to avoid conflicts
-        dotnet nuget remove source github 2>&1 | Out-Null
-        
-        # Add GitHub Packages source with authentication
+
         $source = "https://nuget.pkg.github.com/${{ inputs.org-name }}/index.json"
-        Write-Host "   Adding source: $source" -ForegroundColor Gray
-        
-        dotnet nuget add source $source `
-          --name github `
-          --username ${{ github.actor }} `
-          --password ${{ inputs.github-token }} `
-          --store-password-in-clear-text
-        
+
+        # Match the existing source by URL rather than by name. Repositories register
+        # this feed under their own name, so removing a hardcoded 'github' source left
+        # the real entry in place and the subsequent add failed as a duplicate URL.
+        $existing = (dotnet nuget list source --format Short 2>&1) |
+          Where-Object { $_ -match [regex]::Escape($source) }
+
+        $name = $null
+        if ($existing) {
+          # 'list source --format Detailed' pairs each name with the URL on the next line.
+          $lines = dotnet nuget list source --format Detailed 2>&1
+          for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match [regex]::Escape($source)) {
+              $name = ($lines[$i - 1] -replace '^\s*\d+\.\s*', '' -replace '\s*\[.*$', '').Trim()
+              break
+            }
+          }
+        }
+
+        if ($name) {
+          Write-Host "   Updating credentials for existing source: $name" -ForegroundColor Gray
+          dotnet nuget update source $name `
+            --source $source `
+            --username ${{ github.actor }} `
+            --password ${{ inputs.github-token }} `
+            --store-password-in-clear-text
+        }
+        else {
+          Write-Host "   Adding source: $source" -ForegroundColor Gray
+          dotnet nuget add source $source `
+            --name EagleViewEnt `
+            --username ${{ github.actor }} `
+            --password ${{ inputs.github-token }} `
+            --store-password-in-clear-text
+        }
+
         if ($LASTEXITCODE -eq 0) {
           Write-Host "✅ Authentication configured successfully" -ForegroundColor Green
         } else {
