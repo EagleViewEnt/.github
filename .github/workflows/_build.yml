@@ -167,6 +167,20 @@ jobs:
             dotnet build "${{ steps.sln.outputs.path }}" --no-restore --configuration ${{ inputs.build-config }}
           }
 
+      # Generated assets (CSS bundles, minified JS) are build-owned in some repos, so a
+      # difference after Build means a committed artifact did not match its source - someone
+      # edited the source without rebuilding, or hand-edited a generated file. Runs after
+      # Build because it inspects build output. Repos opt in by providing the script.
+      - name: Verify generated assets are current
+        shell: pwsh
+        run: |
+          $guard = './scripts/Assert-GeneratedAssetsCurrent.ps1'
+          if (Test-Path $guard) {
+            & $guard
+          } else {
+            Write-Host "[INFO] No scripts/Assert-GeneratedAssetsCurrent.ps1; skipping."
+          }
+
       - name: Run tests
         if: inputs.run-tests == 'true'
         shell: pwsh
