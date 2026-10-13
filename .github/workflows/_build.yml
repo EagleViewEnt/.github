@@ -114,7 +114,21 @@ jobs:
 
       - name: Restore dependencies
         run: dotnet restore "${{ steps.sln.outputs.path }}"
-      
+
+      # A test project missing from the solution is never built and never run, so it
+      # rots silently while CI stays green - coverage that appears to exist but does
+      # not. Repos opt in by providing the script; those without it skip the check.
+      # Runs before Build because it needs no build output, so drift fails fast.
+      - name: Verify test projects are in the solution
+        shell: pwsh
+        run: |
+          $guard = './scripts/Assert-TestProjectsInSolution.ps1'
+          if (Test-Path $guard) {
+            & $guard
+          } else {
+            Write-Host "[INFO] No scripts/Assert-TestProjectsInSolution.ps1; skipping."
+          }
+
       - name: Build
         shell: pwsh
         run: |
