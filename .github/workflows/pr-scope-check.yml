@@ -1,0 +1,110 @@
+name: PR Scope Check
+
+# Advisory only. This never fails a PR; it reports scope so sprawl is visible
+# during review instead of after merge. Thresholds match the Branch Scope
+# Discipline section of each repo's .github/copilot-instructions.md.
+#
+# Consumers call this with a thin workflow that owns only the pull_request
+# trigger, because `branches:` cannot be supplied by a reusable workflow.
+
+on:
+  workflow_call:
+    inputs:
+      file-threshold:
+        description: 'Changed-file count above which the PR is flagged'
+        required: false
+        type: number
+        default: 40
+      area-threshold:
+        description: 'Top-level product areas at or above which the PR is flagged'
+        required: false
+        type: number
+        default: 3
+      instructions-path:
+        description: 'Path to the repo instructions referenced in the report footer'
+        required: false
+        type: string
+        default: '.github/copilot-instructions.md'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  scope:
+    name: Measure PR Scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      FILE_THRESHOLD: ${{ inputs.file-threshold }}
+      AREA_THRESHOLD: ${{ inputs.area-threshold }}
+      INSTRUCTIONS_PATH: ${{ inputs.instructions-path }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Measure scope
+      id: measure
+      shell: pwsh
+      env:
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: |
+        $files = git diff --name-only "$env:BASE_SHA...$env:HEAD_SHA" | Where-Object { $_ }
+        $fileCount = $files.Count
+
+        # Root-level files (.gitignore, Directory.*.props, nuget.config, the .sln) are not
+        # product areas; grouping them individually would inflate the count on nearly any PR.
+        $areas = $files |
+          ForEach-Object { if ($_ -match '/') { ($_ -split '/')[0] } else { '(root)' } } |
+          Group-Object |
+          Sort-Object Count -Descending
+
+        $productAreas = @($areas | Where-Object { $_.Name -ne '(root)' })
+        $areaCount = $productAreas.Count
+        $breakdown = ($areas | ForEach-Object { "| ``$($_.Name)`` | $($_.Count) |" }) -join "`n"
+
+        $overFiles = $fileCount -gt [int]$env:FILE_THRESHOLD
+        $overAreas = $areaCount -ge [int]$env:AREA_THRESHOLD
+
+        "fileCount=$fileCount"          >> $env:GITHUB_OUTPUT
+        "areaCount=$areaCount"          >> $env:GITHUB_OUTPUT
+        "flagged=$($overFiles -or $overAreas)" >> $env:GITHUB_OUTPUT
+
+        $verdict = if ($overFiles -or $overAreas) {
+          'This PR crosses a scope tripwire. Confirm it is still **one reviewable change**; if it is not, consider splitting it.'
+        } else {
+          'Scope looks contained.'
+        }
+
+        $reasons = @()
+        if ($overFiles) { $reasons += "- $fileCount files changed (threshold: $env:FILE_THRESHOLD)" }
+        if ($overAreas) { $reasons += "- $areaCount top-level areas touched (threshold: $env:AREA_THRESHOLD). Three or more areas usually means more than one change." }
+        $reasonBlock = if ($reasons.Count -gt 0) { ($reasons -join "`n") + "`n" } else { '' }
+
+        @"
+        ### PR scope check
+
+        $verdict
+
+        $reasonBlock
+        **Files changed:** $fileCount &nbsp;&nbsp; **Product areas touched:** $areaCount
+
+        | Area | Files |
+        | --- | --- |
+        $breakdown
+
+        <sub>Advisory only - this check never fails a build. See the Branch Scope Discipline section in ``$env:INSTRUCTIONS_PATH``.</sub>
+        "@ -replace '(?m)^        ', '' | Set-Content scope-report.md -Encoding utf8
+
+        Get-Content scope-report.md
+
+    - name: Comment scope report
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        header: pr-scope-check
+        path: scope-report.md
