@@ -24,6 +24,14 @@ on:
         required: false
         type: string
         default: 'windows-latest'
+    secrets:
+      # Packing restores as part of the same invocation, so it needs the same
+      # cross-repo read capability as the build job. See the note in _build.yml:
+      # the per-run token cannot read 'private' org packages. Publishing still uses
+      # GITHUB_TOKEN, which is correct - a repo publishes only its own packages.
+      PACKAGES_READ_TOKEN:
+        description: 'Org-level PAT with read:packages, for private sibling packages'
+        required: false
 
 jobs:
   package:
@@ -66,6 +74,7 @@ jobs:
         uses: EagleViewEnt/.github/.github/actions/authenticate-github-packages@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          packages-read-token: ${{ secrets.PACKAGES_READ_TOKEN }}
           org-name: 'EagleViewEnt'
       
       # A single pack invocation performs restore, build, and pack. Splitting these

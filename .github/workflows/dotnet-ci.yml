@@ -160,6 +160,11 @@ jobs:
     needs: [setup, detect-mode, detect-changes]
     if: always() && needs.setup.result == 'success'
     uses: ./.github/workflows/_build.yml
+    # Reusable workflows receive no secrets implicitly. Without this the build job
+    # authenticates with the per-run token only, which cannot read 'private' org
+    # packages. Declared optional in _build.yml, so repos that do not set the org
+    # secret are unaffected.
+    secrets: inherit
     with:
       dotnet-version: ${{ needs.setup.outputs.dotnet-version }}
       build-config: ${{ needs.setup.outputs.build-config }}
