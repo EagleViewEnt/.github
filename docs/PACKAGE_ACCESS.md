@@ -70,24 +70,20 @@ Edit `.github/package-access.json` to specify which repositories should have acc
 
 ## Manual Configuration
 
-### Using the PowerShell Script
+Package visibility and repository access are configured through the GitHub web
+interface, described below.
 
-For manual configuration or troubleshooting, use the provided script:
-
-```powershell
-# Navigate to repository root
-cd path/to/Blazor
-
-# Run the script with your GitHub token
-.\scripts\Configure-PackageAccess.ps1 -Token "ghp_your_token_here"
-
-# Or specify a custom config file
-.\scripts\Configure-PackageAccess.ps1 -Token "ghp_your_token_here" -ConfigFile "custom-config.json"
-```
-
-**Token Requirements:**
-- Personal Access Token (classic) with scopes: `write:packages`, `read:org`, `repo`
-- Or Fine-grained token with permissions: `Packages: Read and Write`, `Contents: Read`
+> **Note**
+> A `Configure-PackageAccess.ps1` script previously lived here and took the token
+> as a command-line parameter (`-Token "ghp_..."`). That is how a live token ends
+> up in PowerShell history and terminal scrollback, which is the cause this
+> organization has already had to clean up after. The script has been removed.
+>
+> Administrative package operations are infrequent and are done in the UI, which
+> needs no local admin-scoped token at all. For the day-to-day *consumer*
+> credential, see `packaging/README.md` in the `EagleViewEnt/Shared` repository:
+> it is entered in a masked dialog and stored DPAPI-encrypted, never on a
+> command line.
 
 ### Using GitHub UI
 
