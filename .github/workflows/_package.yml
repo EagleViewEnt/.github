@@ -115,11 +115,33 @@ jobs:
         shell: pwsh
         run: |
           $source = "https://nuget.pkg.github.com/${{ inputs.org-name }}/index.json"
+
+          # dotnet nuget push failures must fail the job. A non-zero exit inside
+          # ForEach-Object does not stop the pipeline or set the script's exit code,
+          # so a rejected push (for example a 403 when the package has not granted
+          # this repository Actions access) previously reported success and the
+          # release silently shipped without that package.
+          $failed = @()
+
+          function Push-Package {
+            param([string] $Path, [string] $Label)
+
+            Write-Host "Pushing $Label..."
+            dotnet nuget push $Path --api-key ${{ secrets.GITHUB_TOKEN }} --source $source --skip-duplicate
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "::error::Failed to push $Label (exit $LASTEXITCODE)."
+              $script:failed += $Label
+            }
+          }
+
           Get-ChildItem artifacts -Filter *.nupkg | ForEach-Object {
-            Write-Host "Pushing $($_.Name)..."
-            dotnet nuget push $_.FullName --api-key ${{ secrets.GITHUB_TOKEN }} --source $source --skip-duplicate
+            Push-Package -Path $_.FullName -Label $_.Name
           }
           Get-ChildItem artifacts -Filter *.snupkg | ForEach-Object {
-            Write-Host "Pushing symbols $($_.Name)..."
-            dotnet nuget push $_.FullName --api-key ${{ secrets.GITHUB_TOKEN }} --source $source --skip-duplicate
+            Push-Package -Path $_.FullName -Label "symbols $($_.Name)"
+          }
+
+          if ($failed.Count -gt 0) {
+            Write-Host "::error::$($failed.Count) package(s) failed to push: $($failed -join ', ')"
+            exit 1
           }
