@@ -188,6 +188,20 @@ jobs:
           $filterProjects = '${{ inputs.test-filter-projects }}'
           $buildFilter = '${{ inputs.filter-projects }}'
 
+          # xunit v3 and other Microsoft.Testing.Platform runners do not support the
+          # VSTest data collector, and fail with "Zero tests ran" if given --collect.
+          # Repos opt in to MTP through the runner setting in global.json, so detect
+          # that and pass the equivalent native coverage switches instead.
+          $coverageArgs = @('--collect:XPlat Code Coverage')
+
+          if (Test-Path './global.json') {
+            $runner = (Get-Content './global.json' -Raw | ConvertFrom-Json).test.runner
+            if ($runner -eq 'Microsoft.Testing.Platform') {
+              Write-Host "Detected Microsoft.Testing.Platform runner; using native coverage."
+              $coverageArgs = @('--coverage', '--coverage-output-format', 'cobertura')
+            }
+          }
+
           if ($buildFilter -and $buildFilter -ne '[]') {
             Write-Host "⚡ Incremental Test Mode"
             Write-Host ""
@@ -208,7 +222,7 @@ jobs:
                 --configuration ${{ inputs.build-config }} `
                 --no-build `
                 --verbosity normal `
-                --collect:"XPlat Code Coverage"
+                @coverageArgs
 
               if ($LASTEXITCODE -ne 0) {
                 Write-Error "Tests failed for: $project"
@@ -222,7 +236,7 @@ jobs:
               --configuration ${{ inputs.build-config }} `
               --no-build `
               --verbosity normal `
-              --collect:"XPlat Code Coverage"
+              @coverageArgs
           }
 
       - name: Upload coverage reports
@@ -230,4 +244,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage-reports
-          path: '**/TestResults/**/coverage.cobertura.xml'
+          # VSTest writes TestResults/<guid>/coverage.cobertura.xml; Microsoft.Testing.Platform
+          # writes TestResults/<guid>.cobertura.xml. Match both.
+          path: '**/TestResults/**/*cobertura.xml'
